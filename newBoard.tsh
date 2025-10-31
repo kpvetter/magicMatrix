@@ -1,0 +1,368 @@
+#!/bin/sh
+# Restart with tcl: -*- mode: tcl; tab-width: 8; -*- \
+exec tclsh $0 ${1+"$@"}
+
+##+##########################################################################
+#
+# newBoard.tsh -- <description>
+# by Keith Vetter 2025-08-27
+#
+
+namespace eval NewBoard {
+    variable newBoard
+    variable solution
+    variable mode
+    variable seed
+}
+
+proc ::NewBoard::Create {size bias {seed ?}} {
+    variable newBoard
+    global createAttempts
+
+    for {set createAttempts 1} {$createAttempts <= 100} {incr createAttempts} {
+        ::NewBoard::_Create $size $bias $seed
+        ::NewBoard::_ConvertToBrdFormat TBRD
+        if {[::Solve::IsSolvable TBRD]} {
+            # puts "found solvable puzzle: number of attempts $createAttempts"
+            return
+        }
+    }
+    tk_messageBox -icon warning -message "This puzzle may require guessing"
+}
+
+proc ::NewBoard::GetBoard {} {
+    # Returns board created by ::NewBoard::Create as a list of list of ints
+    variable newBoard
+
+    set size $newBoard(size)
+
+    set result {}
+    set line {-}
+    for {set col 0} {$col < $size} {incr col} {
+        lappend line $newBoard(col,$col)
+    }
+    lappend result $line
+
+    for {set row 0} {$row < $size} {incr row} {
+        set line [list $newBoard(row,$row)]
+        for {set col 0} {$col < $size} {incr col} {
+            lappend line $newBoard($row,$col)
+        }
+        lappend result $line
+    }
+    return $result
+}
+proc ::NewBoard::GetSolution {} {
+    variable solution
+    return [lsort [array names solution]]
+}
+
+proc ::NewBoard::Debug {{python False}} {
+    variable seed
+    variable newBoard
+
+    set size $newBoard(size)
+
+    set result ""
+    if {! $python} {
+        append result "set size $size\n"
+        append result "set seed $seed\n"
+        append result "set solution {[::NewBoard::GetSolution]}\n"
+        append result "set BB {\n"
+        set line "    {- "
+        for {set col 0} {$col < $size} {incr col} {
+            append line [format " %2d" $newBoard(col,$col)]
+        }
+        append result "$line}\n"
+        for {set row 0} {$row < $size} {incr row} {
+            set line [format "    {%2d" $newBoard(row,$row)]
+            for {set col 0} {$col < $size} {incr col} {
+                append line [format " %2d" $newBoard($row,$col)]
+            }
+            append result "$line}\n"
+        }
+        append result "}\n"
+    } else {
+        append result "board = \[\n"
+        for {set row 0} {$row < $size} {incr row} {
+            set values [lmap k [lsort [array names newBoard $row,*]] { set newBoard($k) }]
+            set line [join $values ", "]
+            append result "    \[$line\],\n"
+        }
+        append result "\]\n"
+    }
+    return $result
+}
+proc ::NewBoard::_Create {size bias {seed ?}} {
+    variable newBoard
+    variable solution
+    variable mode $bias
+
+    if {$seed eq "?"} {
+        set seed [expr {int(rand() * 2 ** 32)}]
+    }
+    set ::NewBoard::seed $seed
+    expr {srand($seed)}
+
+    unset -nocomplain newBoard
+    unset -nocomplain solution
+
+    set density [expr {int(rand() * 30) + 20}]
+    set selectedCount [expr {round(($size * $size) * $density / 100.)}]
+
+    ::NewBoard::PickSelected $selectedCount $size
+    ::NewBoard::FillAllCells
+    ::NewBoard::FixDeadlyPatterns
+    ::NewBoard::ComputeSums
+}
+proc ::NewBoard::PickSelected {selectedCount size} {
+    variable newBoard
+    variable solution
+
+    unset -nocomplain newBoard
+    unset -nocomplain solution
+    set newBoard(size) $size
+
+    # Make sure each slice has a selected element
+    for {set which 0} {$which < $size} {incr which} {
+        set other [expr {int(rand() * $size)}]
+        set solution($which,$other) 1
+
+        set other [expr {int(rand() * $size)}]
+        set solution($other,$which) 1
+    }
+
+    # Make sure we have selected the right number of cells
+    while {[llength [array names solution]] < $selectedCount} {
+        set row [expr {int(rand() * $size)}]
+        set col [expr {int(rand() * $size)}]
+        set solution($row,$col) 1
+    }
+}
+proc ::NewBoard::FixDeadlyPatterns {} {
+    variable newBoard
+    variable solution
+
+    while {True} {
+        set deadly [::NewBoard::CheckForDeadlyPatterns]
+        if {$deadly eq {}} break
+
+        foreach box $deadly {
+            lassign $box row0 col0 row1 col1
+            set newValue [expr {$newBoard($row0,$col0) + 1}]
+            if {$newValue > 9} { set newValue 1 }
+            set newBoard($row0,$col0) $newValue
+        }
+    }
+
+}
+proc ::NewBoard::CheckForDeadlyPatterns {} {
+    # If the four corners of any rectangle in the grid are all the
+    # same value, then the puzzle has multiple solutions.
+    variable newBoard
+
+    set size $newBoard(size)
+
+    set deadly {}
+    for {set row0 0} {$row0 < $size-1} {incr row0} {
+        for {set col0 0} {$col0 < $size-1} {incr col0} {
+            if {! [info exists newBoard($row0,$col0)]} continue
+            set topLeft $newBoard($row0,$col0)
+
+            for {set row1 [expr {$row0 + 1}]} {$row1 < $size} {incr row1} {
+                if {! [info exists newBoard($row1,$col0)]} continue
+                set bottomLeft $newBoard($row1,$col0)
+                if {$topLeft != $bottomLeft} continue
+
+                for {set col1 [expr {$col0 + 1}]} {$col1 < $size} {incr col1} {
+                    if {! [info exists newBoard($row0,$col1)]} continue
+                    set topRight $newBoard($row0,$col1)
+                    if {$topLeft != $topRight} continue
+
+                    if {! [info exists newBoard($row1,$col1)]} continue
+                    set bottomRight $newBoard($row1,$col1)
+                    if {$topLeft == $bottomRight} {
+                        lappend deadly [list $row0 $col0 $row1 $col1]
+                    }
+                }
+            }
+        }
+    }
+    return $deadly
+
+}
+proc ::NewBoard::ComputeSums {} {
+    variable newBoard
+    variable solution
+
+    set size $newBoard(size)
+    for {set row 0} {$row < $size} {incr row} {
+        set values [lmap k [array names solution $row,*] { set newBoard($k) } ]
+        set newBoard(row,$row) [expr [join [concat $values 0] "+"]]
+    }
+
+    for {set col 0} {$col < $size} {incr col} {
+        set values [lmap k [array names solution *,$col] { set newBoard($k) } ]
+        set newBoard(col,$col) [expr [join [concat $values 0] "+"]]
+    }
+    return
+}
+proc ::NewBoard::FillAllCells {} {
+    variable newBoard
+    variable mode
+
+    set size $newBoard(size)
+    for {set row 0} {$row < $size} {incr row} {
+        for {set col 0} {$col < $size} {incr col} {
+            if {! [info exists newBoard($row,$col)]} {
+                # set value [RandomTriangular 1 10 $mode]
+                set value [expr {1 + int(rand() * 9)}]
+                set newBoard($row,$col) $value
+            }
+        }
+    }
+}
+
+proc ::NewBoard::Show {} {
+    variable newBoard
+    variable solution
+
+    set size $newBoard(size)
+    set line ""
+    for {set col 0} {$col < $size} {incr col} {
+        set ch "--"
+        if {[info exists newBoard(col,$col)]} {
+            set ch [format %2d $newBoard(col,$col)]
+        }
+        append line "$ch  "
+    }
+    puts "   $line"
+    puts "   [string repeat = [string length $line]]"
+
+    for {set row 0} {$row < $size} {incr row} {
+        set ch "--"
+        if {[info exists newBoard(row,$row)]} {
+            set ch [format %2d $newBoard(row,$row)]
+        }
+        puts -nonewline "$ch|"
+        for {set col 0} {$col < $size} {incr col} {
+            set ch "\u00b7 "
+            if {[info exists newBoard($row,$col)]} {
+                set ch "$newBoard($row,$col) "
+                if {[info exists solution($row,$col)]} {
+                    set ch "$newBoard($row,$col)*"
+                }
+            }
+            puts -nonewline " $ch "
+        }
+        puts ""
+    }
+}
+proc ::NewBoard::ShowInFrame {wFrame} {
+    variable newBoard
+    variable solution
+
+    set size $newBoard(size)
+    set font "[font actual TkDefaultFont] -size 18"
+
+    for {set row 0} {$row < $size} {incr row} {
+        for {set col 0} {$col < $size} {incr col} {
+            set digit $newBoard($row,$col)
+            if {[info exists solution($row,$col)]} {
+                set digit [NumberToCircle $digit]
+            }
+            set w $wFrame._${row}_$col
+            ::ttk::label $w -text $digit -font $font
+            grid $w -row $row -column $col
+        }
+    }
+}
+proc ::NewBoard::_ConvertToBrdFormat {_TBRD} {
+    variable newBoard
+
+    upvar 1 $_TBRD TBRD
+
+    set size $newBoard(size)
+    set TBRD(size) $size
+    array set TBRD [array get newBoard row,*]
+    array set TBRD [array get newBoard col,*]
+
+    for {set row 0} {$row < $size} {incr row} {
+        for {set col 0} {$col < $size} {incr col} {
+            set TBRD($row,$col) [list $newBoard($row,$col) "normal"]
+        }
+    }
+}
+proc ::NewBoard::FromFile {fname} {
+    variable newBoard
+    variable solution
+
+    set fin [open $fname r]
+    set data [split [string trim [read $fin]] \n] ; list
+    close $fin
+    set lines [lmap l $data {expr {[regexp {^(x| ?\d)} $l] ? $l : [continue]}}]
+
+    set emsg [::NewBoard::_ValidateFileData $lines]
+    if {$emsg ne ""} {
+        tk_messageBox -icon warning -message $emsg
+        return 0
+    }
+
+    unset -nocomplain newBoard
+    array unset solution
+    unset -nocomplain XBRD
+    set size [expr {[llength $lines] - 1}]
+    set newBoard(size) $size
+
+    # Extract slice sums
+    for {set idx 0} {$idx < $size} {incr idx} {
+        set newBoard(row,$idx) [lindex $lines $idx+1 0]
+        set newBoard(col,$idx) [lindex $lines 0 $idx+1]
+    }
+
+    array set XBRD [array get newBoard]
+    for {set row 0} {$row < $size} {incr row} {
+        for {set col 0} {$col < $size} {incr col} {
+            set value [lindex $lines $row+1 $col+1]
+            set newBoard($row,$col) $value
+            set XBRD($row,$col) [list $value normal]
+        }
+    }
+
+    set isSolvable [::Solve::IsSolvable XBRD]
+    if {! $isSolvable} {
+        tk_messageBox -icon warning -message "Cannot find a solution to this puzzle"
+        return 1
+    } else {
+        foreach cell [::Solve::GetSolution] {
+            lassign $cell row col
+            set solution($row,$col) 1
+        }
+    }
+    return 1
+}
+proc ::NewBoard::_ValidateFileData {lines} {
+    set rows [llength $lines]
+    set cols [llength [lindex $lines 0]]
+
+    if {[llength [lindex $lines 0]] != $rows} {
+        return "Bad data: number of rows ($rows) doesn't match the number of columns ($cols)"
+    }
+
+    for {set row 1} {$row <= $rows} {incr row} {
+        set line [lindex $lines $row-1]
+        set len [llength $line]
+        if {$len != $rows} {
+            return "Bad data: line #$row is wrong length: it is $len but should be $rows"
+        }
+        for {set col 1} {$col <= $rows} {incr col} {
+            if {$row == 1 && $col == 1} continue
+            set value [lindex $lines $row-1 $col-1]
+            if {! [string is integer $value]} {
+                return "Bad data: entry in row $row, column $col is not a number: '$value'"
+            }
+        }
+    }
+
+    return ""
+}
