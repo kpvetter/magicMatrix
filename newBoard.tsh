@@ -149,8 +149,7 @@ proc ::NewBoard::FixDeadlyPatterns {} {
 
         foreach box $deadly {
             lassign $box row0 col0 row1 col1
-            set newValue [expr {$newBoard($row0,$col0) + 1}]
-            if {$newValue > 9} { set newValue 1 }
+            set newValue [expr {($newBoard($row0,$col0) + 1) % 10}]
             set newBoard($row0,$col0) $newValue
         }
     }
@@ -215,7 +214,6 @@ proc ::NewBoard::FillAllCells {} {
     for {set row 0} {$row < $size} {incr row} {
         for {set col 0} {$col < $size} {incr col} {
             if {! [info exists newBoard($row,$col)]} {
-                # set value [RandomTriangular 1 10 $mode]
                 set value [expr {1 + int(rand() * 9)}]
                 set newBoard($row,$col) $value
             }
