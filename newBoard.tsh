@@ -7,6 +7,8 @@ exec tclsh $0 ${1+"$@"}
 # newBoard.tsh -- <description>
 # by Keith Vetter 2025-08-27
 #
+# TODO: change how ::NewBoard::GetBoard data is returned
+#
 
 namespace eval NewBoard {
     variable newBoard
@@ -48,6 +50,10 @@ proc ::NewBoard::GetBoard {} {
         for {set col 0} {$col < $size} {incr col} {
             lappend line $newBoard($row,$col)
         }
+        lappend result $line
+    }
+    foreach key $newBoard(blobs) {
+        set line [list blob $key $newBoard(blob,$key) {*}$newBoard(blob,$key,cells)]
         lappend result $line
     }
     return $result
@@ -114,6 +120,7 @@ proc ::NewBoard::_Create {size bias {seed ?}} {
     ::NewBoard::FillAllCells
     ::NewBoard::FixDeadlyPatterns
     ::NewBoard::ComputeSums
+    set newBoard(blobs) {}
 }
 proc ::NewBoard::PickSelected {selectedCount size} {
     variable newBoard
@@ -149,8 +156,11 @@ proc ::NewBoard::FixDeadlyPatterns {} {
 
         foreach box $deadly {
             lassign $box row0 col0 row1 col1
-            set newValue [expr {($newBoard($row0,$col0) + 1) % 10}]
-            set newBoard($row0,$col0) $newValue
+
+            incr newBoard($row0,$col0)
+            if {$newBoard($row0,$col0) > 9} {
+                set newBoard($row0,$col0) 1
+            }
         }
     }
 
@@ -298,7 +308,8 @@ proc ::NewBoard::FromFile {fname} {
     set fin [open $fname r]
     set data [split [string trim [read $fin]] \n] ; list
     close $fin
-    set lines [lmap l $data {expr {[regexp {^(x| ?\d)} $l] ? $l : [continue]}}]
+    set lines [lmap l $data {expr {[regexp {^(x|-| ?\d)} $l] ? $l : [continue]}}]
+    set blobs [lmap l $data {expr {[regexp {^blob} $l] ? $l : [continue]}}]
 
     set emsg [::NewBoard::_ValidateFileData $lines]
     if {$emsg ne ""} {
@@ -327,23 +338,32 @@ proc ::NewBoard::FromFile {fname} {
         }
     }
 
+    set newBoard(blobs) {}
+    for {set idx 0} {$idx < [llength $blobs]} {incr idx} {
+        set bdata [lindex $blobs $idx]
+        set cells [lassign $bdata _ target]
+        set cells [lsort $cells]
+
+        lappend newBoard(blobs) $idx
+        set newBoard(blob,$idx) $target
+        set newBoard(blob,$idx,cells) $cells
+    }
+
     set isSolvable [::Solve::IsSolvable XBRD]
-    if {! $isSolvable} {
-        tk_messageBox -icon warning -message "Cannot find a solution to this puzzle"
-        return 1
-    } else {
+    if {$isSolvable} {
         foreach cell [::Solve::GetSolution] {
             lassign $cell row col
             set solution($row,$col) 1
         }
     }
-    return 1
+
+    return $isSolvable
 }
 proc ::NewBoard::_ValidateFileData {lines} {
     set rows [llength $lines]
     set cols [llength [lindex $lines 0]]
 
-    if {[llength [lindex $lines 0]] != $rows} {
+    if {$cols != $rows} {
         return "Bad data: number of rows ($rows) doesn't match the number of columns ($cols)"
     }
 

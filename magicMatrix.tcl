@@ -85,6 +85,7 @@ set COLOR(hintBox) seashell2
 set COLOR(title) brown1
 set COLOR(game,over) gray75
 set COLOR(target,highlight) yellow
+set COLOR(blobs) {gold cyan orange green pink sienna1 yellow red blue springgreen}
 
 set BRD(active) 0
 set BRD(move,count) 0
@@ -217,6 +218,7 @@ proc DrawBoard {size} {
                 [list ButtonAction "normal" $row $col]
         }
     }
+    .c move blob 1 1
 
     .c create text $B(center,grid) -tag tagVictory -font $B(font,victory) -fill black \
         -anchor c -justify c
@@ -347,9 +349,64 @@ proc DoAllForced {} {
     ::Undo::PushMoves $allUndoItems
     return $cnt
 }
+proc KPVBlob {action {row ?} {col ?}} {
+    global kpvBlobId kpvBlobCells
+
+    if {$action eq "init"} {
+        set kpvBlobId 0
+        array unset kpvBlobCells
+        set size $::BRD(size)
+        for {set row 0} {$row < $size} {incr row} {
+            set kpvBlobCells($row) {}
+            for {set col 0} {$col < $size} {incr col} {
+                set tagBox grid_${row}_$col
+
+                .c bind $tagBox <ButtonRelease-${::S(button,middle)}> \
+                    [list KPVBlob "add" $row $col]
+            }
+        }
+        return
+    }
+    if {$action eq "next"} {
+        incr kpvBlobId
+        set kpvBlobCells($kpvBlobId) {}
+        return
+    }
+    if {$action eq "data"} {
+        set result [join $::BB "\n"]
+        append result "\n\n"
+
+        foreach id [lsort -dictionary [array names kpvBlobCells]] {
+            set target 0
+            foreach cell $kpvBlobCells($id) {
+                lassign $cell row col
+                if {"$row,$col" in [::NewBoard::GetSolution]} {
+                    incr target [lindex $::BRD($row,$col) 0]
+                }
+            }
+            set line "blob $target $kpvBlobCells($id)\n"
+            append result $line
+        }
+        return $result
+    }
+    set cell [list $row $col]
+    if {$cell in $kpvBlobCells($kpvBlobId)} {
+        puts "KPV: duplicate cell $cell"
+        return
+    }
+    lappend kpvBlobCells($kpvBlobId) [list $row $col]
+    set tagBg bg_${row}_$col
+    .c itemconfig $tagBg -fill [lindex $::COLOR(blobs) $kpvBlobId]
+    if {[llength $kpvBlobCells($kpvBlobId)] == $::BRD(size)} {
+        puts "KPV: blob is full-sized -- moving to next"
+        incr kpvBlobId
+        set kpvBlobCells($kpvBlobId) {}
+    }
+}
 proc ButtonAction {newState row col} {
     global BRD
     focus -force .
+
     if {! $BRD(active)} return
 
     set oldState [lindex $BRD($row,$col) 1]
@@ -606,8 +663,40 @@ proc roundRect { w x0 y0 x3 y3 radius args } {
     lappend cmd -smooth 1
     return [eval $cmd $args]
 }
+proc FillInBlobs {} {
+    global BB BRD
 
+    set colors $::COLOR(blobs)
+    foreach line $BB {
+        if {! [string match blob* $line]} continue
+        set cells [lassign $line _ id target]
+        set BRD(blob,$id) $target
+        set BRD(blob,$id,cells) $cells
+        set BRD(blob,$id,color) [lindex $colors $id]
+    }
+    set BRD(hasBlobs) [info exists BRD(blob,0)]
+}
+proc ColorizeBlobs {} {
+    global BRD
+
+    if {! [info exists BRD(blob,0)]} return
+
+    for {set id 0} {$id < $BRD(size)} {incr id} {
+        lassign [lindex $BRD(blob,$id,cells) 0] row col
+        set tagBlob blob_${row}_$col
+        set tagBlobText btext_${row}_$col
+        .c itemconfig $tagBlob -fill $::COLOR(grid)
+        .c itemconfig $tagBlobText -text $BRD(blob,$id)
+
+        foreach cell $BRD(blob,$id,cells) {
+            lassign $cell row col
+            set tagBg bg_${row}_$col
+            .c itemconfig $tagBg -fill $BRD(blob,$id,color)
+        }
+    }
+}
 proc FillInBoard {size} {
+    # TODO: change BB
     global BB BRD
 
     unset -nocomplain BRD
@@ -831,7 +920,11 @@ proc StartGame {{sizeOverride ?} {seed ?} {filename ?}} {
     ::Explode::Stop
     if {$filename ne "?"} {
         set n [::NewBoard::FromFile $filename]
-        if {! $n} return
+        if {! $n} {
+            set n [tk_messageBox -icon warning -type yesno \
+                       -message "Cannot find a solution to this puzzle\n\nPlay anyway?"]
+            if {$n eq "no"} return
+        }
     } else {
         set size [::Settings::GetBoardSize $sizeOverride]
         set defaultBias 8
@@ -845,10 +938,14 @@ proc StartGame {{sizeOverride ?} {seed ?} {filename ?}} {
 proc Restart {} {
     global BRD BB
 
-    set size [expr {[llength $BB] - 1}]
+    # TODO: remove BB as global variable
+
+    set size [expr {[llength [lindex $BB 0]] - 1}]
     set BRD(size) $size ;# KPV remove setting this elsewhere???
     DrawBoard $size
     FillInBoard $size
+    FillInBlobs
+    ColorizeBlobs
     for {set whichSlice 0} {$whichSlice < $size} {incr whichSlice} {
         UpdateTargetCellColor $whichSlice $whichSlice
     }
@@ -1370,20 +1467,22 @@ proc ::Explode::Implode {row col} {
     }
 
     set tag bg_${row}_$col
-    set AIDS($tag) [after 10 [list ::Explode::ImplodeAnim $tag $STATIC(implode,delay) $colors]]
+    set lastColor [.c itemcget $tag -fill]
+    set AIDS($tag) [after 10 \
+                        [list ::Explode::ImplodeAnim $tag $STATIC(implode,delay) $colors $lastColor]]
 }
-proc ::Explode::ImplodeAnim {tag delay colors} {
+proc ::Explode::ImplodeAnim {tag delay colors lastColor} {
     variable AIDS
 
     if {! $::Settings::HINTS(explode) || $colors eq {}} {
-        ::Explode::Stop $tag
+        ::Explode::Stop $tag $lastColor
         return
     }
     set newColors [lassign $colors color]
     .c itemconfig $tag -fill $color
-    set AIDS($tag) [after $delay [list ::Explode::ImplodeAnim $tag $delay $newColors]]
+    set AIDS($tag) [after $delay [list ::Explode::ImplodeAnim $tag $delay $newColors $lastColor]]
 }
-proc ::Explode::Stop {{who *}} {
+proc ::Explode::Stop {{who *} {lastColor ""}} {
     variable AIDS
 
     foreach {tag aid} [array get AIDS $who] {
@@ -1394,7 +1493,7 @@ proc ::Explode::Stop {{who *}} {
             .c raise circle_${row}_$col
             .c raise text_${row}_$col
         } else {
-            .c itemconfig $tag -fill $::COLOR(grid)
+            .c itemconfig $tag -fill $lastColor
         }
     }
     array unset AIDS $who
