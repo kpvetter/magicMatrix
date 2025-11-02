@@ -352,6 +352,7 @@ proc DoAllForced {} {
     return $cnt
 }
 proc KPVBlob {action {row ?} {col ?}} {
+    # hack to manually highlight blobs in a filled in board
     global kpvBlobId kpvBlobCells
 
     if {$action eq "init"} {
@@ -524,6 +525,7 @@ proc ChangeGridState {row col newState} {
 
     _ComputeHint row $row
     _ComputeHint col $col
+    # KPV: blob todo - update metadata for blob containing cell $row,$col
     return $oldState
 }
 
@@ -697,6 +699,7 @@ proc ColorizeBlobs {} {
             set tagBg bg_${row}_$col
             .c itemconfig $tagBg -fill $BRD(blob,$id,color)
         }
+        _ComputeHint blob $id
     }
 }
 proc FillInBoard {size} {
@@ -734,6 +737,19 @@ proc FillInBoard {size} {
     }
 
 }
+proc GetCellAtSliceIndex {_BRD sliceType whichSlice index} {
+    upvar 1 $_BRD BRD
+
+    if {$sliceType eq "row"} {
+        set key "$whichSlice,$index"
+    } elseif {$sliceType eq "col"} {
+        set key "$index,$whichSlice"
+    } else {
+        lassign [lindex $BRD(blob,$whichSlice,cells) $index] row col
+        set key "$row,$col"
+    }
+    return $BRD($key)
+}
 proc _ComputeHint {sliceType whichSlice} {
     global BRD
 
@@ -741,7 +757,8 @@ proc _ComputeHint {sliceType whichSlice} {
     set unselectedTotal 0
 
     for {set index 0} {$index < $BRD(size)} {incr index} {
-        set cell [expr {$sliceType eq "row" ? $BRD($whichSlice,$index) : $BRD($index,$whichSlice)}]
+        # set cell [expr {$sliceType eq "row" ? $BRD($whichSlice,$index) : $BRD($index,$whichSlice)}]
+        set cell [GetCellAtSliceIndex BRD $sliceType $whichSlice $index]
         lassign $cell value state
         if {$state eq "normal"} {
             incr unselectedTotal $value
@@ -1291,6 +1308,9 @@ proc ::Settings::Apply {} {
         UpdateTargetCellColor $whichSlice $whichSlice
         _ComputeHint row $whichSlice
         _ComputeHint col $whichSlice
+        if {[info exist ::BRD(blob,0)]} {
+            _ComputeHint blob $whichSlice
+        }
     }
 }
 
