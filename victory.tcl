@@ -29,10 +29,10 @@ proc ::Victory::Victory {{type ?}} {
     ::Victory::SetupColors $type
     ::Victory::Message
     set tags [lmap x [::NewBoard::GetSolution] {regsub {(.),(.)} $x {circle_\1_\2}}]
-    for {set row 0} {$row < $::BRD(size)} {incr row} {
+    foreach row $::BRD(indices) {
         lappend tags "bg_row_$row"
         lappend tags "bg_col_$row"
-        for {set col 0} {$col < $::BRD(size)} {incr col} {
+        foreach col $::BRD(indices) {
             lappend tags "bg_${row}_$col"
         }
     }

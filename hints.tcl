@@ -215,8 +215,8 @@ proc ::Hint::FindBad {} {
     set solution [::NewBoard::GetSolution]
 
     set bad {}
-    for {set row 0} {$row < $BRD(size)} {incr row} {
-        for {set col 0} {$col < $BRD(size)} {incr col} {
+    foreach row $BRD(indices) {
+        foreach col $BRD(indices) {
             set key "$row,$col"
             set state [lindex $BRD($key) 1]
             if {$state eq "normal"} continue
@@ -236,8 +236,8 @@ proc ::Hint::FindUnfinishedCells {} {
     set solution [::NewBoard::GetSolution]
     set unfinished {}
 
-    for {set row 0} {$row < $BRD(size)} {incr row} {
-        for {set col 0} {$col < $BRD(size)} {incr col} {
+    foreach row $BRD(indices) {
+        foreach col $BRD(indices) {
             set key "$row,$col"
             set state [lindex $BRD($key) 1]
             if {$state ne "normal"} continue
@@ -257,7 +257,7 @@ proc ::Hint::QuickPass {} {
     set undoItems {}
 
     set highlightPauseMS 200
-    for {set row 0} {$row < $BRD(size)} {incr row} {
+    foreach row $BRD(indices) {
         set cells [::Hint::QuickPassSlice row $row]
         foreach cell $cells {
             MakeMove kill {*}$cell
@@ -269,7 +269,7 @@ proc ::Hint::QuickPass {} {
         .c itemconfig $tag -fill $::COLOR(bg)
     }
 
-    for {set col 0} {$col < $BRD(size)} {incr col} {
+    foreach col $BRD(indices) {
         set cells [::Hint::QuickPassSlice col $col]
         foreach cell $cells {
             MakeMove kill {*}$cell
@@ -280,8 +280,8 @@ proc ::Hint::QuickPass {} {
         Pause $highlightPauseMS
         .c itemconfig $tag -fill $::COLOR(bg)
     }
-    if {[info exists BRD(blob,0)]} {
-        for {set blob 0} {$blob < $BRD(size)} {incr blob} {
+    if {$BRD(hasBlobs)} {
+        foreach blob $BRD(indices) {
             lassign [lindex $BRD(blob,$blob,cells) 0] row col
 
             set cells [::Hint::QuickPassSlice blob $blob]
@@ -304,7 +304,7 @@ proc ::Hint::QuickPassSlice {sliceType whichSlice} {
     global BRD
 
     set all {}
-    for {set index 0} {$index < $BRD(size)} {incr index} {
+    foreach index $BRD(indices) {
         if {$sliceType eq "row"} {
             set key "$whichSlice,$index"
         } elseif {$sliceType eq "col"} {
@@ -326,8 +326,8 @@ proc ::Hint::QuickPassFast {} {
     # Quick pass over grid removing all cells greater than the slice target
     global BRD
 
-    for {set row 0} {$row < $BRD(size)} {incr row} {
-        for {set col 0} {$col < $BRD(size)} {incr col} {
+    foreach row $BRD(indices) {
+        foreach col $BRD(indices) {
             lassign $BRD($row,$col) value state
             if {$state ne "normal"} continue
 
@@ -345,11 +345,11 @@ proc ::Hint::QuickPassTooGood {} {
     global BRD
 
     set cnt 0
-    for {set row 0} {$row < $BRD(size)} {incr row} {
+    foreach row $BRD(indices) {
         lassign $BRD(row,$row,meta) rowTarget rowSelectedTotal rowNeeded rowUnselectedTotal
         set rowExcess [expr {$rowUnselectedTotal - $rowNeeded}]
 
-        for {set col 0} {$col < $BRD(size)} {incr col} {
+        foreach col $BRD(indices) {
             lassign $BRD($row,$col) value state
             if {$state ne "normal"} continue
 

@@ -36,18 +36,16 @@ proc ::NewBoard::GetBoard {} {
     # Returns board created by ::NewBoard::Create as a list of list of ints
     variable newBoard
 
-    set size $newBoard(size)
-
     set result {}
     set line {-}
-    for {set col 0} {$col < $size} {incr col} {
+    foreach col $newBoard(indices) {
         lappend line $newBoard(col,$col)
     }
     lappend result $line
 
-    for {set row 0} {$row < $size} {incr row} {
+    foreach row $newBoard(indices) {
         set line [list $newBoard(row,$row)]
-        for {set col 0} {$col < $size} {incr col} {
+        foreach col $newBoard(indices) {
             lappend line $newBoard($row,$col)
         }
         lappend result $line
@@ -67,22 +65,20 @@ proc ::NewBoard::Debug {{python False}} {
     variable seed
     variable newBoard
 
-    set size $newBoard(size)
-
     set result ""
     if {! $python} {
-        append result "set size $size\n"
+        append result "set size $$newBoard(size)\n"
         append result "set seed $seed\n"
         append result "set solution {[::NewBoard::GetSolution]}\n"
         append result "set BB {\n"
         set line "    {- "
-        for {set col 0} {$col < $size} {incr col} {
+        foreach col $newBoard(indices) {
             append line [format " %2d" $newBoard(col,$col)]
         }
         append result "$line}\n"
-        for {set row 0} {$row < $size} {incr row} {
+        foreach row $newBoard(indices) {
             set line [format "    {%2d" $newBoard(row,$row)]
-            for {set col 0} {$col < $size} {incr col} {
+            foreach col $newBoard(indices) {
                 append line [format " %2d" $newBoard($row,$col)]
             }
             append result "$line}\n"
@@ -90,7 +86,7 @@ proc ::NewBoard::Debug {{python False}} {
         append result "}\n"
     } else {
         append result "board = \[\n"
-        for {set row 0} {$row < $size} {incr row} {
+        foreach row $newBoard(indices) {
             set values [lmap k [lsort [array names newBoard $row,*]] { set newBoard($k) }]
             set line [join $values ", "]
             append result "    \[$line\],\n"
@@ -116,6 +112,8 @@ proc ::NewBoard::_Create {size bias {seed ?}} {
     set density [expr {int(rand() * 30) + 20}]
     set selectedCount [expr {round(($size * $size) * $density / 100.)}]
 
+    unset -nocomplain newBoard
+    unset -nocomplain solution
     ::NewBoard::PickSelected $selectedCount $size
     ::NewBoard::FillAllCells
     ::NewBoard::FixDeadlyPatterns
@@ -129,9 +127,10 @@ proc ::NewBoard::PickSelected {selectedCount size} {
     unset -nocomplain newBoard
     unset -nocomplain solution
     set newBoard(size) $size
+    set newBoard(indices) [lrange {0 1 2 3 4 5 6 7 8 9 10} 0 $size-1]
 
     # Make sure each slice has a selected element
-    for {set which 0} {$which < $size} {incr which} {
+    foreach which $newBoard(indices) {
         set other [expr {int(rand() * $size)}]
         set solution($which,$other) 1
 
@@ -205,12 +204,12 @@ proc ::NewBoard::ComputeSums {} {
     variable solution
 
     set size $newBoard(size)
-    for {set row 0} {$row < $size} {incr row} {
+    foreach row $newBoard(indices) {
         set values [lmap k [array names solution $row,*] { set newBoard($k) } ]
         set newBoard(row,$row) [expr [join [concat $values 0] "+"]]
     }
 
-    for {set col 0} {$col < $size} {incr col} {
+    foreach col $newBoard(indices) {
         set values [lmap k [array names solution *,$col] { set newBoard($k) } ]
         set newBoard(col,$col) [expr [join [concat $values 0] "+"]]
     }
@@ -220,9 +219,8 @@ proc ::NewBoard::FillAllCells {} {
     variable newBoard
     variable mode
 
-    set size $newBoard(size)
-    for {set row 0} {$row < $size} {incr row} {
-        for {set col 0} {$col < $size} {incr col} {
+    foreach row $newBoard(indices) {
+        foreach col $newBoard(indices) {
             if {! [info exists newBoard($row,$col)]} {
                 set value [expr {1 + int(rand() * 9)}]
                 set newBoard($row,$col) $value
@@ -235,9 +233,8 @@ proc ::NewBoard::Show {} {
     variable newBoard
     variable solution
 
-    set size $newBoard(size)
     set line ""
-    for {set col 0} {$col < $size} {incr col} {
+    foreach col $newBoard(indices) {
         set ch "--"
         if {[info exists newBoard(col,$col)]} {
             set ch [format %2d $newBoard(col,$col)]
@@ -247,13 +244,13 @@ proc ::NewBoard::Show {} {
     puts "   $line"
     puts "   [string repeat = [string length $line]]"
 
-    for {set row 0} {$row < $size} {incr row} {
+    foreach row $newBoard(indices) {
         set ch "--"
         if {[info exists newBoard(row,$row)]} {
             set ch [format %2d $newBoard(row,$row)]
         }
         puts -nonewline "$ch|"
-        for {set col 0} {$col < $size} {incr col} {
+        foreach col $newBoard(indices) {
             set ch "\u00b7 "
             if {[info exists newBoard($row,$col)]} {
                 set ch "$newBoard($row,$col) "
@@ -270,11 +267,10 @@ proc ::NewBoard::ShowInFrame {wFrame} {
     variable newBoard
     variable solution
 
-    set size $newBoard(size)
     set font "[font actual TkDefaultFont] -size 18"
 
-    for {set row 0} {$row < $size} {incr row} {
-        for {set col 0} {$col < $size} {incr col} {
+    foreach row $newBoard(indices) {
+        foreach col $newBoard(indices) {
             set digit $newBoard($row,$col)
             if {[info exists solution($row,$col)]} {
                 set digit [NumberToCircle $digit]
@@ -290,13 +286,13 @@ proc ::NewBoard::_ConvertToBrdFormat {_TBRD} {
 
     upvar 1 $_TBRD TBRD
 
-    set size $newBoard(size)
-    set TBRD(size) $size
+    set TBRD(size) $newBoard(size)
+    set TBRD(indices) $newBoard(indices)
     array set TBRD [array get newBoard row,*]
     array set TBRD [array get newBoard col,*]
 
-    for {set row 0} {$row < $size} {incr row} {
-        for {set col 0} {$col < $size} {incr col} {
+    foreach row $newBoard(indices) {
+        foreach col $newBoard(indices) {
             set TBRD($row,$col) [list $newBoard($row,$col) "normal"]
         }
     }
@@ -324,16 +320,17 @@ proc ::NewBoard::FromFile {fname} {
     array unset solution
     set size [expr {[llength $lines] - 1}]
     set newBoard(size) $size
+    set newBoard(indices) [lrange {0 1 2 3 4 5 6 7 8 9 10} 0 $size-1]
 
     # Extract slice sums
-    for {set idx 0} {$idx < $size} {incr idx} {
+    foreach idx $newBoard(indices) {
         set newBoard(row,$idx) [lindex $lines $idx+1 0]
         set newBoard(col,$idx) [lindex $lines 0 $idx+1]
     }
 
     array set XBRD [array get newBoard]
-    for {set row 0} {$row < $size} {incr row} {
-        for {set col 0} {$col < $size} {incr col} {
+    foreach row $newBoard(indices) {
+        foreach col $newBoard(indices) {
             set value [lindex $lines $row+1 $col+1]
             set newBoard($row,$col) $value
         }
@@ -353,8 +350,8 @@ proc ::NewBoard::FromFile {fname} {
     # Check for being able to find a solution
     unset -nocomplain XBRD
     array set XBRD [array get newBoard]
-    for {set row 0} {$row < $size} {incr row} {
-        for {set col 0} {$col < $size} {incr col} {
+    foreach row $newBoard(indices) {
+        foreach col $newBoard(indices) {
             set XBRD($row,$col) [list $XBRD($row,$col) normal]
         }
     }

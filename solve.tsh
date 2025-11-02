@@ -43,8 +43,8 @@ proc ::Solve::GetSolution {} {
 proc ::Solve::_CheckForSolved {_XBRD} {
     upvar 1 $_XBRD XBRD
 
-    for {set row 0} {$row < $XBRD(size)} {incr row} {
-        for {set col 0} {$col < $XBRD(size)} {incr col} {
+    foreach row $XBRD(indices) {
+        foreach col $XBRD(indices) {
             if {[lindex $XBRD($row,$col) 1] eq "normal"} { return 0 }
         }
     }
@@ -57,7 +57,7 @@ proc ::Solve::_Progress {_XBRD} {
     set progressFlag 0
     foreach sliceType {row col blob} {
         if {$sliceType eq "blob" && ! [info exists XBRD(blob,0)]} continue
-        for {set whichSlice 0} {$whichSlice < $XBRD(size)} {incr whichSlice} {
+        foreach whichSlice $XBRD(indices) {
             lassign [::Solve::_TryProgressing XBRD $sliceType $whichSlice] keep delete
 
             if {[::Solve::_UpdateBoard XBRD $keep $delete]} {
@@ -153,7 +153,7 @@ proc ::Solve::_GetSliceData {_XBRD sliceType whichSlice} {
 
     set selectedSum 0
     set unselectedCells {}
-    for {set index 0} {$index < $XBRD(size)} {incr index} {
+    foreach index $XBRD(indices) {
         if {$sliceType eq "row"} {
             set cell $XBRD($whichSlice,$index)
         } elseif {$sliceType eq "col"} {
@@ -177,8 +177,8 @@ proc ::Solve::_SaveSolution {_XBRD} {
     upvar 1 $_XBRD XBRD
 
     set solution {}
-    for {set row 0} {$row < $XBRD(size)} {incr row} {
-        for {set col 0} {$col < $XBRD(size)} {incr col} {
+    foreach row $XBRD(indices) {
+        foreach col $XBRD(indices) {
             lassign $XBRD($row,$col) value state
             if {$state eq "select"} { lappend solution [list $row $col] }
         }
@@ -189,8 +189,8 @@ proc ::Solve::_SaveSolution {_XBRD} {
 proc ::Solve::ShowBoard {_XBRD} {
     upvar 1 $_XBRD XBRD
 
-    for {set row 0} {$row < $XBRD(size)} {incr row} {
-        for {set col 0} {$col < $XBRD(size)} {incr col} {
+    foreach row $XBRD(indices) {
+        foreach col $XBRD(indices) {
             lassign $XBRD($row,$col) value state
             set suffix " "
             if {$state eq "kill"} { set suffix "\u2716" }

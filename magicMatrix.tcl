@@ -319,9 +319,8 @@ proc DoOneForced {sliceType whichSlice} {
 
     set action [expr {$needed == 0 ? "kill" : "select"}]
 
-    for {set i 0} {$i < $BRD(size)} {incr i} {
-        set key [GetKeyForSliceIndex BRD $sliceType $whichSlice $i]
-        lassign [split $key ","] row col
+    foreach i $BRD(indices) {
+        lassign [GetKeyForSliceIndex BRD $sliceType $whichSlice $i] row col
         if {[lindex $BRD($row,$col) 1] eq "normal"} {
             lappend undoItems [lindex $BRD($row,$col) 1] $row $col
             MakeMove $action $row $col
@@ -340,7 +339,7 @@ proc DoAllForced {} {
     set cnt 0
     foreach sliceType {row col blob} {
         if {$sliceType eq "blob" && ! $BRD(hasBlobs)} break
-        for {set whichSlice 0} {$whichSlice < $BRD(size)} {incr whichSlice} {
+        foreach whichSlice $BRD(indices) {
             lassign $BRD($sliceType,$whichSlice,meta) target selectedTotal needed unselectedTotal
             if {$unselectedTotal == 0} continue
             if {$needed == 0 || $needed == $unselectedTotal} {
@@ -366,9 +365,9 @@ proc KPVBlob {action {row ?} {col ?}} {
         set kpvBlobId 0
         array unset kpvBlobCells
         set size $::BRD(size)
-        for {set row 0} {$row < $size} {incr row} {
+        foreach row $BRD(indices) {
             set kpvBlobCells($row) {}
-            for {set col 0} {$col < $size} {incr col} {
+            foreach col $BRD(indices) {
                 set tagBox grid_${row}_$col
 
                 .c bind $tagBox <ButtonRelease-${::S(button,middle)}> \
@@ -463,7 +462,7 @@ proc CheckForVictory {} {
     set isDone True
     foreach sliceType {row col} {
         if {! $isDone} break
-        for {set whichSlice 0} {$whichSlice < $BRD(size)} {incr whichSlice} {
+        foreach whichSlice $BRD(indices) {
             lassign $BRD($sliceType,$whichSlice,meta) _ _ needed unselectedTotal
             if {$needed != 0 || $unselectedTotal != 0} {
                 set isDone False
@@ -542,7 +541,7 @@ proc CellToBlob {_BRD row col} {
     if {! $BRD(hasBlobs)} { return "" }
 
     set cell [list $row $col]
-    for {set id 0} {$id < $BRD(size)} {incr id} {
+    foreach id $BRD(indices) {
         if {$cell in $BRD(blob,$id,cells)} {
             return $id
         }
@@ -700,6 +699,7 @@ proc FillInBlobs {} {
         set BRD(blob,$id) $target
         set BRD(blob,$id,cells) $cells
         set BRD(blob,$id,color) [lindex $colors $id]
+        set BRD(blob,$id,active) 1
     }
     set BRD(hasBlobs) [info exists BRD(blob,0)]
 }
@@ -708,7 +708,7 @@ proc ColorizeBlobs {} {
 
     if {! $BRD(hasBlobs)} return
 
-    for {set id 0} {$id < $BRD(size)} {incr id} {
+    foreach id $BRD(indices) {
         lassign [lindex $BRD(blob,$id,cells) 0] row col
         set tagBlob blob_${row}_$col
         set tagBlobText btext_${row}_$col
@@ -735,10 +735,11 @@ proc FillInBoard {size} {
     unset -nocomplain BRD
 
     set BRD(size) $size
+    set BRD(indices) [lrange {0 1 2 3 4 5 6 7 8 9 10} 0 $BRD(size)-1]
 
-    # Grid
-    for {set row 0} {$row < $size} {incr row} {
-        for {set col 0} {$col < $size} {incr col} {
+    # Fill in the grid
+    foreach row $BRD(indices) {
+        foreach col $BRD(indices) {
             set tagText text_${row}_$col
             set tagSmall small_${row}_$col
             set value [lindex $BB $row+1 $col+1]
@@ -749,8 +750,8 @@ proc FillInBoard {size} {
         }
     }
 
-    # Sums
-    for {set whichSlice 0} {$whichSlice < $size} {incr whichSlice} {
+    # Fill in the target sums
+    foreach whichSlice $BRD(indices) {
         set tagText text_col_$whichSlice
         set BRD(col,$whichSlice) [lindex $BB 0 $whichSlice+1]
         .c itemconfig $tagText -text $BRD(col,$whichSlice)
@@ -763,16 +764,31 @@ proc FillInBoard {size} {
     }
 
 }
+proc GetAllCellsForSlice {_BRD sliceType whichSlice} {
+    upvar 1 $_BRD BRD
+    if {$sliceType eq "blob"} { return $BRD(blob,$whichSlice,cells) }
+
+    set cells {}
+    foreach i $BRD(indices) {
+        if {$sliceType eq "row"} {
+            lappend cells [list $whichSlice $i]
+        } else {
+            lappend cells [list $i $whichSlice]
+        }
+    }
+    return $cells
+}
 proc GetKeyForSliceIndex {_BRD sliceType whichSlice index} {
     upvar 1 $_BRD BRD
+    set cells [GetAllCellsForSlice BRD $sliceType $whichSlice]
+    return [lindex $cells $index]
 
     if {$sliceType eq "row"} {
-        set key "$whichSlice,$index"
+        set key [list $whichSlice $index]
     } elseif {$sliceType eq "col"} {
-        set key "$index,$whichSlice"
+        set key [list $index $whichSlice]
     } else {
-        lassign [lindex $BRD(blob,$whichSlice,cells) $index] row col
-        set key "$row,$col"
+        set key [lindex $BRD(blob,$whichSlice,cells) $index]
     }
     return $key
 }
@@ -782,9 +798,11 @@ proc _ComputeHint {sliceType whichSlice} {
     set selectedTotal 0
     set unselectedTotal 0
 
-    for {set index 0} {$index < $BRD(size)} {incr index} {
-        set key [GetKeyForSliceIndex BRD $sliceType $whichSlice $index]
-        lassign $BRD($key) value state
+    set cells [GetAllCellsForSlice BRD $sliceType $whichSlice]
+
+    foreach index $BRD(indices) {
+        lassign [GetKeyForSliceIndex BRD $sliceType $whichSlice $index] row col
+        lassign $BRD($row,$col) value state
         if {$state eq "normal"} {
             incr unselectedTotal $value
         } elseif {$state eq "select"} {
@@ -991,7 +1009,7 @@ proc Restart {} {
     FillInBoard $size
     FillInBlobs
     ColorizeBlobs
-    for {set whichSlice 0} {$whichSlice < $size} {incr whichSlice} {
+    foreach whichSlice $BRD(indices) {
         UpdateTargetCellColor $whichSlice $whichSlice
     }
 
@@ -1329,7 +1347,7 @@ proc ::Settings::ShowSolution {forced} {
 proc ::Settings::Apply {} {
     if {! $::BRD(active)} return
     ShowState
-    for {set whichSlice 0} {$whichSlice < $::BRD(size)} {incr whichSlice} {
+    foreach whichSlice $::BRD(indices) {
         UpdateTargetCellColor $whichSlice $whichSlice
         _ComputeHint row $whichSlice
         _ComputeHint col $whichSlice
