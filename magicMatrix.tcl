@@ -63,9 +63,10 @@ set ONEBAR "\u23af"
 set STRIKETHROUGH "\u0336"
 set SUPERPLUS "\u207A"
 set SUPERMINUS "\u207B"
-# set GOOD_STATE "\u2665\ufe0f"
-set GOOD_STATE "\u2764\ufe0f"
-set BAD_STATE "\u26d4\ufe0f"       ;# No entry
+# set GOOD_STATE "\u2665\ufe0f "
+set GOOD_STATE "\u2764\ufe0f "
+set UNKNOWN_STATE "\ufffd "
+set BAD_STATE "\u26d4\ufe0f "       ;# No entry
 # set BAD_STATE "\u26a0\ufe0f"     ;# Warning sign
 # set BAD_STATE "\u2622\ufe0f"     ;# Radioactive sign
 # set VICTORY_STATE "\u2747\ufe0f"
@@ -209,7 +210,7 @@ proc DrawBoard {size} {
             .c create text $xx1 $y1 -tag [list $tagBox $tagSmall] -font $B(font,hints) -anchor se \
                 -fill $COLOR(small)
             .c lower $tagSmall $tagBox
-            .c create rect $x0 $y0 $blobX1 $blobY1 -tag [list blob $tagBlob] -outline ""
+            .c create rect $x0 $y0 $blobX1 $blobY1 -tag [list blob blobBox $tagBlob] -outline ""
             .c create text $blobX $blobY -tag [list blob blobText $tagBlobText] -font $B(font,blob)
 
             .c bind $tagBox <ButtonRelease-1> [list ButtonAction "select" $row $col]
@@ -435,6 +436,8 @@ proc ShowState {} {
     set msg $::BAD_STATE
     if {! $::Settings::HINTS(health)} {
         set msg ""
+    } elseif {! $::BRD(solvable)} {
+        set msg $::UNKNOWN_STATE
     } elseif {[::Hint::IsOk]} {
         set msg $::GOOD_STATE
     }
@@ -685,7 +688,7 @@ proc ColorizeBlobs {} {
         lassign [lindex $BRD(blob,$id,cells) 0] row col
         set tagBlob blob_${row}_$col
         set tagBlobText btext_${row}_$col
-        .c itemconfig $tagBlob -fill $::COLOR(grid)
+        .c itemconfig $tagBlob -fill $::COLOR(grid) -outline black
         .c itemconfig $tagBlobText -text $BRD(blob,$id)
 
         foreach cell $BRD(blob,$id,cells) {
@@ -908,7 +911,7 @@ proc RandomTriangular {low high mode} {
     return $x
 }
 
-proc StartGame {{sizeOverride ?} {seed ?} {filename ?}} {
+proc StartGame {{sizeOverride ?} {seed ?} {fname ?}} {
     global S BB BRD
 
     if {$BRD(active) && $BRD(move,count) > 0} {
@@ -918,8 +921,8 @@ proc StartGame {{sizeOverride ?} {seed ?} {filename ?}} {
     }
     ::Victory::Stop all
     ::Explode::Stop
-    if {$filename ne "?"} {
-        set n [::NewBoard::FromFile $filename]
+    if {$fname ne "?"} {
+        set n [::NewBoard::FromFile $fname]
         if {! $n} {
             set n [tk_messageBox -icon warning -type yesno \
                        -message "Cannot find a solution to this puzzle\n\nPlay anyway?"]
@@ -941,7 +944,6 @@ proc Restart {} {
     # TODO: remove BB as global variable
 
     set size [expr {[llength [lindex $BB 0]] - 1}]
-    set BRD(size) $size ;# KPV remove setting this elsewhere???
     DrawBoard $size
     FillInBoard $size
     FillInBlobs
@@ -952,6 +954,8 @@ proc Restart {} {
 
     set BRD(active) True
     set BRD(move,count) 0
+    set BRD(solvable) [::Solve::IsSolvable BRD]
+
     ::Undo::Clear
     .c itemconfig tagVictory -text ""
     ShowState
@@ -1514,7 +1518,9 @@ if {0} {
     StartGame $size $seed
 
 }
-
+proc blob {{fname puzzles/color_0.txt}} {
+    StartGame ? ? $fname
+}
 StartGame
 
 return

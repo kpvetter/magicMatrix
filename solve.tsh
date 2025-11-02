@@ -10,6 +10,8 @@ exec tclsh $0 ${1+"$@"}
 # XBRD(size) size of puzzle
 # XBRD(row,#) row target
 # XBRD(col,#) col target
+# XBRD(blob,#) blob target
+# XBRD(blob,#,cells) <list of {row col}>
 # XBRD(#,#) {value state}
 
 namespace eval ::Solve {
@@ -53,7 +55,8 @@ proc ::Solve::_Progress {_XBRD} {
     upvar 1 $_XBRD XBRD
 
     set progressFlag 0
-    foreach sliceType {row col} {
+    foreach sliceType {row col blob} {
+        if {$sliceType eq "blob" && ! [info exists XBRD(blob,0)]} continue
         for {set whichSlice 0} {$whichSlice < $XBRD(size)} {incr whichSlice} {
             lassign [::Solve::_TryProgressing XBRD $sliceType $whichSlice] keep delete
 
@@ -67,8 +70,8 @@ proc ::Solve::_Progress {_XBRD} {
 proc ::Solve::_TryProgressing {_XBRD sliceType whichSlice} {
     upvar 1 $_XBRD XBRD
     lassign [::Solve::SingleSlice XBRD $sliceType $whichSlice] keep delete sets
-    set keep1 [::Solve::_ConvertToRowCol $sliceType $whichSlice $keep]
-    set delete1 [::Solve::_ConvertToRowCol $sliceType $whichSlice $delete]
+    set keep1 [::Solve::_ConvertToRowCol XBRD $sliceType $whichSlice $keep]
+    set delete1 [::Solve::_ConvertToRowCol XBRD $sliceType $whichSlice $delete]
     return [list $keep1 $delete1]
 }
 proc ::Solve::SingleSlice {_XBRD sliceType whichSlice} {
@@ -124,18 +127,22 @@ proc ::Solve::_UpdateBoard {_XBRD keep delete} {
     }
     return 1
 }
-proc ::Solve::_ConvertToRowCol {sliceType whichSlice cellList} {
+proc ::Solve::_ConvertToRowCol {_XBRD sliceType whichSlice cellList} {
     # Converts from [list {value index} ...] for a given sliceType/whichSlice
     # into [list {row col} {row col} ...]
+    upvar 1 $_XBRD XBRD
     set result {}
 
     if {$sliceType eq "row"} {set row $whichSlice }
     if {$sliceType eq "col"} {set col $whichSlice }
     foreach item $cellList {
+        set index [lindex $item 1]
         if {$sliceType eq "row"} {
-            set col [lindex $item 1]
+            set col $index
+        } elseif {$sliceType eq "col"} {
+            set row $index
         } else {
-            set row [lindex $item 1]
+            lassign [lindex $XBRD(blob,$whichSlice,cells) $index] row col
         }
         lappend result [list $row $col]
     }
@@ -147,7 +154,14 @@ proc ::Solve::_GetSliceData {_XBRD sliceType whichSlice} {
     set selectedSum 0
     set unselectedCells {}
     for {set index 0} {$index < $XBRD(size)} {incr index} {
-        set cell [expr {$sliceType eq "row" ? $XBRD($whichSlice,$index) : $XBRD($index,$whichSlice)}]
+        if {$sliceType eq "row"} {
+            set cell $XBRD($whichSlice,$index)
+        } elseif {$sliceType eq "col"} {
+            set cell $XBRD($index,$whichSlice)
+        } else {
+            lassign [lindex $XBRD(blob,$whichSlice,cells) $index] row col
+            set cell $XBRD($row,$col)
+        }
         lassign $cell value state
         if {$state eq "select"} {
             incr selectedSum $value

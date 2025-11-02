@@ -305,6 +305,9 @@ proc ::NewBoard::FromFile {fname} {
     variable newBoard
     variable solution
 
+    if {[info tclversion] >= 9.0} {
+        set fname [file tildeexpand $fname]
+    }
     set fin [open $fname r]
     set data [split [string trim [read $fin]] \n] ; list
     close $fin
@@ -319,7 +322,6 @@ proc ::NewBoard::FromFile {fname} {
 
     unset -nocomplain newBoard
     array unset solution
-    unset -nocomplain XBRD
     set size [expr {[llength $lines] - 1}]
     set newBoard(size) $size
 
@@ -334,7 +336,6 @@ proc ::NewBoard::FromFile {fname} {
         for {set col 0} {$col < $size} {incr col} {
             set value [lindex $lines $row+1 $col+1]
             set newBoard($row,$col) $value
-            set XBRD($row,$col) [list $value normal]
         }
     }
 
@@ -349,6 +350,14 @@ proc ::NewBoard::FromFile {fname} {
         set newBoard(blob,$idx,cells) $cells
     }
 
+    # Check for being able to find a solution
+    unset -nocomplain XBRD
+    array set XBRD [array get newBoard]
+    for {set row 0} {$row < $size} {incr row} {
+        for {set col 0} {$col < $size} {incr col} {
+            set XBRD($row,$col) [list $XBRD($row,$col) normal]
+        }
+    }
     set isSolvable [::Solve::IsSolvable XBRD]
     if {$isSolvable} {
         foreach cell [::Solve::GetSolution] {
