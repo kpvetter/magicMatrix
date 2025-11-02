@@ -321,6 +321,9 @@ proc DoOneForced {sliceType whichSlice} {
         for {set i 0} {$i < $BRD(size)} {incr i} {
             if {$sliceType eq "row"} { set row $whichSlice ; set col $i }
             if {$sliceType eq "col"} { set col $whichSlice ; set row $i }
+            if {$sliceType eq "blob"} {
+                lassign [lindex $BRD(blob,$whichSlice,cells) $i] row col
+            }
             if {[lindex $BRD($row,$col) 1] eq "normal"} {
                 lappend undoItems [lindex $BRD($row,$col) 1] $row $col
                 MakeMove $action $row $col
@@ -337,7 +340,7 @@ proc DoAllForced {} {
 
     set whoIsForced {}
     set cnt 0
-    foreach sliceType {row col} {
+    foreach sliceType {row col blob} {
         for {set whichSlice 0} {$whichSlice < $BRD(size)} {incr whichSlice} {
             lassign $BRD($sliceType,$whichSlice,meta) target selectedTotal needed unselectedTotal
             if {$unselectedTotal == 0} continue
@@ -347,6 +350,7 @@ proc DoAllForced {} {
             }
         }
     }
+
     set allUndoItems {}
     foreach {sliceType whichSlice} $whoIsForced {
         set undoItems [DoOneForced $sliceType $whichSlice]
@@ -589,6 +593,7 @@ proc SetUpBoardParams {size} {
 
 }
 proc GridSumsXY {sliceType whichSlice} {
+    # Location where a target sum should be placed
     global B
 
     if {$sliceType eq "row"} {
