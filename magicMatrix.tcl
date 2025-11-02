@@ -485,7 +485,9 @@ proc GetTargetCellState {sliceType whichSlice} {
 proc UpdateTargetCellColor {row col} {
     global COLOR
 
-    foreach sliceType {row col} whichSlice [list $row $col] {
+    foreach sliceType {row col blob} whichSlice [list $row $col [CellToBlob ::BRD $row $col]] {
+        if {$sliceType eq "blob" && ! $::BRD(hasBlobs)} break
+
         set tstate [GetTargetCellState $sliceType $whichSlice]
         set color $COLOR(TSTATE_NORMAL)
         if { $::Settings::HINTS(coloring) || $tstate in {"TSTATE_DONE" "TSTATE_BAD"}} {
@@ -706,8 +708,13 @@ proc ColorizeBlobs {} {
         lassign [lindex $BRD(blob,$id,cells) 0] row col
         set tagBlob blob_${row}_$col
         set tagBlobText btext_${row}_$col
+        set tagBg bg_blob_$id
+        set tagText text_blob_$id
+
         .c itemconfig $tagBlob -fill $::COLOR(grid) -outline black
         .c itemconfig $tagBlobText -text $BRD(blob,$id)
+        .c addtag $tagBg withtag $tagBlob
+        .c addtag $tagText withtag $tagBlobText
 
         foreach cell $BRD(blob,$id,cells) {
             lassign $cell row col
