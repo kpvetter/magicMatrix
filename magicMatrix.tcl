@@ -314,22 +314,20 @@ proc DoOneForced {sliceType whichSlice} {
     global BRD
     if {! $BRD(active)} return
 
-    set undoItems {}
     lassign $BRD($sliceType,$whichSlice,meta) target selectedTotal needed unselectedTotal
-    if {$needed == 0 || $needed == $unselectedTotal} {
-        set action [expr {$needed == 0 ? "kill" : "select"}]
-        for {set i 0} {$i < $BRD(size)} {incr i} {
-            if {$sliceType eq "row"} { set row $whichSlice ; set col $i }
-            if {$sliceType eq "col"} { set col $whichSlice ; set row $i }
-            if {$sliceType eq "blob"} {
-                lassign [lindex $BRD(blob,$whichSlice,cells) $i] row col
-            }
-            if {[lindex $BRD($row,$col) 1] eq "normal"} {
-                lappend undoItems [lindex $BRD($row,$col) 1] $row $col
-                MakeMove $action $row $col
-            }
+    if {$needed != 0 && $needed != $unselectedTotal} { return $undoItems}
+
+    set action [expr {$needed == 0 ? "kill" : "select"}]
+
+    for {set i 0} {$i < $BRD(size)} {incr i} {
+        set key [GetKeyForSliceIndex BRD $sliceType $whichSlice $i]
+        lassign [split $key ","] row col
+        if {[lindex $BRD($row,$col) 1] eq "normal"} {
+            lappend undoItems [lindex $BRD($row,$col) 1] $row $col
+            MakeMove $action $row $col
         }
     }
+
     return $undoItems
 }
 proc DoAllForced {} {
@@ -341,6 +339,7 @@ proc DoAllForced {} {
     set whoIsForced {}
     set cnt 0
     foreach sliceType {row col blob} {
+        if {$sliceType eq "blob" && ! $BRD(hasBlobs)} break
         for {set whichSlice 0} {$whichSlice < $BRD(size)} {incr whichSlice} {
             lassign $BRD($sliceType,$whichSlice,meta) target selectedTotal needed unselectedTotal
             if {$unselectedTotal == 0} continue
@@ -764,7 +763,7 @@ proc FillInBoard {size} {
     }
 
 }
-proc GetCellAtSliceIndex {_BRD sliceType whichSlice index} {
+proc GetKeyForSliceIndex {_BRD sliceType whichSlice index} {
     upvar 1 $_BRD BRD
 
     if {$sliceType eq "row"} {
@@ -775,7 +774,7 @@ proc GetCellAtSliceIndex {_BRD sliceType whichSlice index} {
         lassign [lindex $BRD(blob,$whichSlice,cells) $index] row col
         set key "$row,$col"
     }
-    return $BRD($key)
+    return $key
 }
 proc _ComputeHint {sliceType whichSlice} {
     global BRD
@@ -784,9 +783,8 @@ proc _ComputeHint {sliceType whichSlice} {
     set unselectedTotal 0
 
     for {set index 0} {$index < $BRD(size)} {incr index} {
-        # set cell [expr {$sliceType eq "row" ? $BRD($whichSlice,$index) : $BRD($index,$whichSlice)}]
-        set cell [GetCellAtSliceIndex BRD $sliceType $whichSlice $index]
-        lassign $cell value state
+        set key [GetKeyForSliceIndex BRD $sliceType $whichSlice $index]
+        lassign $BRD($key) value state
         if {$state eq "normal"} {
             incr unselectedTotal $value
         } elseif {$state eq "select"} {
