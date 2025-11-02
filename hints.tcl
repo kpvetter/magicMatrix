@@ -158,6 +158,8 @@ proc ::Hint::BestSlice {} {
 
     set focus {}
     foreach {k v} [array get BRD *,hint] {
+        # TODO: figure out how to indicate a blob being the best slice
+        if {[string match blob,* $k]} continue
         set raw [string map [list $::MIDDLE_DOT "" \u0336 "" " " ""] $v]
         set count [string length $raw]
         if {$count > 0} {

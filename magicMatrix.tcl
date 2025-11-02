@@ -13,6 +13,7 @@ exit
 #  check starting size w/ screensize
 #  reveal: from logic or by brute force
 #  show size/seed and create board with size/seed
+#  BUG: sometimes undo doesn't fix circled number (multiple steps???)
 #
 #  auto solve
 #  animation
@@ -73,14 +74,16 @@ set BAD_STATE "\u26d4\ufe0f "       ;# No entry
 set VICTORY_STATE ""
 set FINISHED_STATE "SOLVED!"
 
+
+
 set COLOR(bg) darkgreen
 set COLOR(grid) white
-set COLOR(sums,normal) gray75
-set COLOR(sums,done) springgreen
-set COLOR(sums,need0) cyan
-set COLOR(sums,almost) royalblue1
-set COLOR(sums,active) lightseagreen
-set COLOR(sums,bad) red
+set COLOR(TSTATE_NORMAL) gray75
+set COLOR(TSTATE_DONE) springgreen
+set COLOR(TSTATE_NEED_IS_0) cyan
+set COLOR(TSTATE_EXCESS_IS_0) royalblue1
+set COLOR(TSTATE_ACTIVE) lightseagreen
+set COLOR(TSTATE_BAD) red
 set COLOR(small) gray25
 set COLOR(hintBox) seashell2
 set COLOR(title) brown1
@@ -88,6 +91,7 @@ set COLOR(game,over) gray75
 set COLOR(target,highlight) yellow
 set COLOR(target,highlight,blob) magenta
 set COLOR(blobs) {gold cyan orange green pink sienna1 yellow red blue springgreen}
+set COLOR(blobs) {#d95d4c #5a9ee0 #bce5d0 #d54782 #936bf3 #9bbc20 #ca7a18 #e68e7b #6e82e7 #f42ad7 #7316f2 #49cadb}
 
 set BRD(active) 0
 set BRD(move,count) 0
@@ -145,7 +149,7 @@ proc DrawBoard {size} {
 
         lassign [GridSumsXY row $whichSlice] x0 y0 x1 y1 x y
         set x1a [expr {$x1 - 5}]
-        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list bg2 $tagBox $tagBg] -fill $COLOR(sums,normal) -outline black -width 2
+        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list bg2 $tagBox $tagBg] -fill $COLOR(TSTATE_NORMAL) -outline black -width 2
         .c create text $x $y -tag [list $tagBox $tagText] -font $B(font,sums) -anchor c -text 13
         .c create text $x1a $y0 -tag [list $tagBox $tagHintUnselected] -font $B(font,hints) -anchor ne
         .c create text $x $y1 -tag [list $tagBox $tagHintSelected] -font $B(font,hints) -anchor s
@@ -169,7 +173,7 @@ proc DrawBoard {size} {
 
         lassign [GridSumsXY column $whichSlice] x0 y0 x1 y1 x y
         set x1a [expr {$x1 - 5}]
-        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list bg2 $tagBox $tagBg] -fill $COLOR(sums,normal) -outline black -width 2
+        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list bg2 $tagBox $tagBg] -fill $COLOR(TSTATE_NORMAL) -outline black -width 2
         .c create text $x $y -tag [list $tagBox $tagText] -font $B(font,sums) -anchor c -text 13
         .c create text $x1a $y0 -tag [list $tagBox $tagHintUnselected] -font $B(font,hints) -anchor ne
         .c create text $x $y1 -tag [list $tagBox $tagHintSelected] -font $B(font,hints) -anchor s
@@ -465,32 +469,27 @@ proc CheckForVictory {} {
         }
     }
     return $isDone
+}
 
+proc GetTargetCellState {sliceType whichSlice} {
+    global BRD
+    lassign $BRD($sliceType,$whichSlice,meta) _ _ needed unselectedTotal
+
+    if {$needed < 0} { return "TSTATE_BAD" }
+    if {$needed == 0 && $unselectedTotal == 0} { return "TSTATE_DONE" }
+    if {$needed == 0} { return "TSTATE_NEED_IS_0" }
+    if {$needed == $unselectedTotal} { return "TSTATE_EXCESS_IS_0" }
+    if {! [::Hint::IsNullHint $sliceType $whichSlice]} { return "TSTATE_ACTIVE" }
+    return "TSTATE_NORMAL"
 }
 proc UpdateTargetCellColor {row col} {
-    global BRD COLOR
+    global COLOR
 
     foreach sliceType {row col} whichSlice [list $row $col] {
-        lassign $BRD($sliceType,$whichSlice,meta) _ _ needed unselectedTotal
-        set color $COLOR(sums,normal)
-        if {$needed < 0} {
-            set color $COLOR(sums,bad)
-        } elseif {$needed == 0} {
-            if {$unselectedTotal == 0} {
-                set color $COLOR(sums,done)
-            } else {
-                if {$::Settings::HINTS(coloring)} {
-                    set color $COLOR(sums,need0)
-                }
-            }
-        } elseif {$needed == $unselectedTotal} {
-            if {$::Settings::HINTS(coloring)} {
-                set color $COLOR(sums,almost)
-            }
-        } elseif {! [::Hint::IsNullHint $sliceType $whichSlice]} {
-            if {$::Settings::HINTS(coloring)} {
-                set color $COLOR(sums,active)
-            }
+        set tstate [GetTargetCellState $sliceType $whichSlice]
+        set color $COLOR(TSTATE_NORMAL)
+        if { $::Settings::HINTS(coloring) || $tstate in {"TSTATE_DONE" "TSTATE_BAD"}} {
+            set color $COLOR($tstate)
         }
 
         set tagBg bg_${sliceType}_$whichSlice
@@ -525,10 +524,26 @@ proc ChangeGridState {row col newState} {
 
     _ComputeHint row $row
     _ComputeHint col $col
-    # KPV: blob todo - update metadata for blob containing cell $row,$col
+    if {$BRD(hasBlobs)} {
+        set blobId [CellToBlob BRD $row $col]
+        _ComputeHint blob $blobId
+    }
+
     return $oldState
 }
+proc CellToBlob {_BRD row col} {
+    upvar 1 $_BRD BRD
 
+    if {! $BRD(hasBlobs)} { return "" }
+
+    set cell [list $row $col]
+    for {set id 0} {$id < $BRD(size)} {incr id} {
+        if {$cell in $BRD(blob,$id,cells)} {
+            return $id
+        }
+    }
+    error "cannot find blob for $row,$col"
+}
 proc SetUpBoardParams {size} {
     global S B
 
@@ -685,7 +700,7 @@ proc FillInBlobs {} {
 proc ColorizeBlobs {} {
     global BRD
 
-    if {! [info exists BRD(blob,0)]} return
+    if {! $BRD(hasBlobs)} return
 
     for {set id 0} {$id < $BRD(size)} {incr id} {
         lassign [lindex $BRD(blob,$id,cells) 0] row col
@@ -1308,7 +1323,7 @@ proc ::Settings::Apply {} {
         UpdateTargetCellColor $whichSlice $whichSlice
         _ComputeHint row $whichSlice
         _ComputeHint col $whichSlice
-        if {[info exist ::BRD(blob,0)]} {
+        if {$::BRD(hasBlobs)} {
             _ComputeHint blob $whichSlice
         }
     }
@@ -1377,12 +1392,12 @@ proc Help {} {
     T "are displayed in various colors.\n"
 
     # Normal, Done, Bad, Active, Almost, Need0
-    Coloring $::COLOR(sums,normal) "Normal" "default state"
-    Coloring $::COLOR(sums,active) "Active" "progress can be made on this slice"
-    Coloring $::COLOR(sums,done) "Done" "the slice has been solved"
-    Coloring $::COLOR(sums,bad) "Bad" "the slice is in an illegal state"
-    Coloring $::COLOR(sums,almost) "Forced" "all unselected numbers add to the slice sum"
-    Coloring $::COLOR(sums,need0) "Forced" "slice sum matched, all unselected numbers can be killed"
+    Coloring $::COLOR(TSTATE_NORMAL) "Normal" "default state"
+    Coloring $::COLOR(TSTATE_ACTIVE) "Active" "progress can be made on this slice"
+    Coloring $::COLOR(TSTATE_DONE) "Done" "the slice has been solved"
+    Coloring $::COLOR(TSTATE_BAD) "Bad" "the slice is in an illegal state"
+    Coloring $::COLOR(TSTATE_NEED_IS_0) "Forced" "slice sum matched, all unselected numbers can be killed"
+    Coloring $::COLOR(TSTATE_EXCESS_IS_0) "Forced" "all unselected numbers add to the slice sum"
 
     T "\n"
     T "Solving Hints\n" h2
@@ -1517,6 +1532,7 @@ proc ::Explode::Stop {{who *} {lastColor ""}} {
             .c delete $tag
             .c raise circle_${row}_$col
             .c raise text_${row}_$col
+            .c raise blob
         } else {
             .c itemconfig $tag -fill $lastColor
         }
@@ -1539,178 +1555,9 @@ if {0} {
     StartGame $size $seed
 
 }
-proc blob {{fname puzzles/color_0.txt}} {
+proc blob {{fname puzzles/color_1.txt}} {
     StartGame ? ? $fname
 }
 StartGame
 
 return
-
-Another deadly pattern:
-=======================
-
-set size 8; set seed 1598439930
-8 7 5 6
-. . . .
-8 7 5 6
-
-set size 8
-set seed 1598439930
-set solution {0,0 0,2 0,3 0,5 1,1 1,2 1,3 1,4 1,5 1,7 2,0 3,1 3,3 3,4 4,1 4,2 4,5 4,7 5,5 6,0 6,1 6,2 6,4 6,5 6,7 7,3 7,4 7,5 7,6}
-set BB {
-    {-  20 20 23 25 20 31  6 21}
-    {26  5  8  7  8  5  6  7  6}
-    {34  4  3  7  8  6  3  5  7}
-    { 6  6  4  9  9  8  8  7  6}
-    {17  8  8  7  4  5  6  6  8}
-    {17  3  2  3  9  4  5  6  7}
-    { 4  6  8  2  7  8  4  3  7}
-    {40  9  7  6  8  3  8  7  7}
-    {22  5  6  6  5  6  5  6  6}
-}
-
-
-
-################################################################
-# Multiple solutions
-set BB {
-    { - 6 7 2 5 19 5 11}
-    { 9 8 6 2 6  7 6  7}
-    {15 6 1 6 5  4 5  6}
-    { 7 7 7 3 6  6 8  2}
-    { 5 6 7 7 2  3 8  6}
-    { 3 4 6 8 3  6 7  3}
-    { 9 7 6 8 8  5 8  4}
-    { 7 2 7 1 4  7 2  7}
-}
-set BB {
-    { - 11 11 15  9 10 24  8}
-    {11  3  9  7  4  8  8  9}
-    { 3  8  8  7  2  3  7  8}
-    {19  4  7  4  3  4  7  8}
-    {23  7  4  5  5  7  7  5}
-    { 9  7  8  2  5  4  9  9}
-    { 8  3  7  8  5  8  6  4}
-    {15  7  7  5  4  4  8  3}
-} ;# Deadly pattern w/ 7 in row 6, col 5 and 3,1 & 4,0}
-
-
-
-# Unsolvable
-set BB {
-    { - 17 16 26 23 17 11 11 15}
-    {16  7  4  6  5  7  5  1  6}
-    {25  5  9  3  5  6  4  7  3}
-    {15  4  3  4  5  8  3  7  7}
-    {17  4  3  5  4  5  3  6  2}
-    {22  7  8  8  7  4  8  7  7}
-    {17  5  2  7  7  3  8  2  5}
-    {16  5  7  7  2  3  8  3  8}
-    { 8  1  6  7  6  8  8  3  8}
-}
-
-# Unsolvable
-set BB {
-    { - 28 20 17 25 27 19 30 13}
-    {14  8  5  1  4  5  3  9  4}
-    {25  7  5  6  9  4  7  2  8}
-    {17  7  6  9  8  5  5  8  6}
-    {18  6  7  6  5  7  5  7  1}
-    {25  5  8  7  7  8  7  6  4}
-    {30  5  5  8  5  7  6  8  7}
-    {29  8  8  7  8  6  6  6  7}
-    {21  7  7  7  6  8  8  3  8}
-}
-
-set BB {
-    {- 13 7 27 8 3 14 20}
-    {14 7 4 7 1 3 7 2}
-    {19 7 1 7 8 5 5 4}
-    { 7 2 1 3 2 8 4 4}
-    {21 4 4 6 2 5 9 8}
-    { 8 8 1 7 8 2 8 1}
-    {14 9 5 1 6 9 9 8}
-    { 9 2 1 6 5 6 4 6}
-} ;# Aug 26  19/49 circles 39%
-
-set BB {
-    {- 24 1 16 11 31 20}
-    {24 9 1 7 4 8 2}
-    { 6 1 1 1 1 1 4}
-    {25 8 5 9 3 9 7}
-    {16 6 3 1 7 8 2}
-    {12 3 3 7 2 2 7}
-    {20 6 6 6 9 5 6}
-} ;# 18/36 circles 50%
-
-set BB {
-    {- 13 20 9 4 1 20}
-    {14 5 6 5 3 9 5}
-    {16 9 9 5 4 1 6}
-    { 7 5 1 5 1 6 7}
-    {10 1 9 9 9 7 4}
-    { 9 2 2 8 4 4 7}
-    {11 5 4 8 3 6 2}
-} ;# July 7 15/36 circles 42%
-
-set BB3 {
-    {- 10 16 23 5 8 12 10 8}
-    {14 2 6 8 2 6 2 1 5}
-    { 8 7 9 9 5 3 6 1 3}
-    {15 6 4 5 6 5 8 9 3}
-    { 9 6 3 6 4 2 7 1 8}
-    {16 3 7 9 3 4 2 9 9}
-    {12 4 4 5 6 7 9 6 8}
-    { 8 5 3 4 6 6 5 2 1}
-    {10 7 8 9 9 3 7 4 5}
-} ;# June 20  17/64 circles 27%
-
-set BB {
-    {- 11 2 19 19 19 27 11 23}
-    {10 6 8 1 7 7 4 2 9}
-    {20 6 3 1 2 3 4 3 9}
-    {18 7 4 1 9 8 7 1 1}
-    {13 6 2 3 8 2 8 4 4}
-    {19 9 7 3 1 5 6 9 8}
-    {14 5 3 3 7 1 1 4 2}
-    {21 1 3 8 7 2 6 9 7}
-    {16 1 2 3 6 1 6 7 7}
-} ;# May 19  27/64 42%
-
-set BB_TOUGH {
-    {-  7 9 4 6 14 9 7 9}
-    {12 8 6 4 3  8 6 8 2}
-    {15 8 6 7 2  8 7 7 8}
-    { 4 4 8 5 3  8 4 4 6}
-    {16 2 3 6 8  6 5 5 5}
-    { 6 5 7 3 4  2 2 4 2}
-    { 5 6 3 8 5  8 7 3 5}
-    { 5 5 5 5 7  2 3 8 7}
-    { 2 8 6 7 2  7 6 5 8}
-}
-
-set BB_NOSOLVE {
-    {- 21 17 12 31 7 7 29 14 6 6}
-    {18 6 8 6 3 2 4 6 7 5 6}
-    {10 5 7 5 5 7 4 5 4 4 7}
-    {17 1 8 8 5 4 5 1 5 2 7}
-    {6 6 5 2 6 6 3 4 8 5 6}
-    {11 8 7 4 6 5 6 7 4 6 5}
-    {15 7 2 7 7 7 5 6 8 3 7}
-    {21 4 8 8 6 5 2 7 9 8 5}
-    {16 6 9 4 8 2 6 8 7 1 8}
-    {17 4 6 6 7 7 5 7 8 3 5}
-    {19 3 3 2 9 5 8 5 4 5 8}
-}
-
-
-set BB_ambiguous {
-    {- 17  9 12 26 17 19 28}
-    {11 3  6  5  5  8  8  8}
-    {20 8  4  8  7  7  5  7}
-    {24 2  7  1  7  6  7  8}
-    {26 4  8  8  5  6  7  4}
-    {13 7  5  9  3  5  2  5}
-    {28 4  9  3  5  6  7  7}
-    { 6 8  6  5  6  5  3  3}
-} ;# 7's in row 1,2,5 & columns 3,5,6 form a deadly pattern
