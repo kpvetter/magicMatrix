@@ -109,6 +109,7 @@ proc ::Victory::Stop {what} {
     .c itemconfig bg -fill $::COLOR(game,over)
     .c itemconfig bg2 -fill $::COLOR(sums,done)
     .c itemconfig victory2 -fill red
+    .c itemconfig blobBox -fill $::COLOR(game,over)
     after 500 .c delete victory
 
     if {$what eq "all"} {

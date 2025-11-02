@@ -8,6 +8,8 @@ exec tclsh $0 ${1+"$@"}
 # by Keith Vetter 2025-09-04
 #
 
+# TODO:
+# replace global BRD with upvar
 
 namespace eval ::Hint {
     variable poppedUpItem {}
@@ -276,15 +278,39 @@ proc ::Hint::QuickPass {} {
         Pause $highlightPauseMS
         .c itemconfig $tag -fill $::COLOR(bg)
     }
+    if {[info exists BRD(blob,0)]} {
+        for {set blob 0} {$blob < $BRD(size)} {incr blob} {
+            lassign [lindex $BRD(blob,$blob,cells) 0] row col
+
+            set cells [::Hint::QuickPassSlice blob $blob]
+            foreach cell $cells {
+                MakeMove kill {*}$cell
+                lappend undoItems normal {*}$cell
+            }
+            set tag blob_${row}_$col
+            set oldColor [.c itemcget $tag -fill]
+            .c itemconfig $tag -fill $::COLOR(target,highlight,blob)
+            Pause $highlightPauseMS
+            .c itemconfig $tag -fill $oldColor
+        }
+    }
     ::Undo::PushMoves $undoItems
 }
 
 proc ::Hint::QuickPassSlice {sliceType whichSlice} {
+    # Find all cells in given slice that are greater than the target
     global BRD
 
     set all {}
     for {set index 0} {$index < $BRD(size)} {incr index} {
-        set key [expr {$sliceType eq "row" ? "$whichSlice,$index" : "$index,$whichSlice"}]
+        if {$sliceType eq "row"} {
+            set key "$whichSlice,$index"
+        } elseif {$sliceType eq "col"} {
+            set key "$index,$whichSlice"
+        } else {
+            lassign [lindex $BRD(blob,$whichSlice,cells) $index] row col
+            set key "$row,$col"
+        }
         lassign $BRD($key) value state
         if {$state ne "normal"} continue
         if {$value > $BRD($sliceType,$whichSlice)} {

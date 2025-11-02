@@ -86,6 +86,7 @@ set COLOR(hintBox) seashell2
 set COLOR(title) brown1
 set COLOR(game,over) gray75
 set COLOR(target,highlight) yellow
+set COLOR(target,highlight,blob) magenta
 set COLOR(blobs) {gold cyan orange green pink sienna1 yellow red blue springgreen}
 
 set BRD(active) 0
