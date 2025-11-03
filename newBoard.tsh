@@ -296,6 +296,7 @@ proc ::NewBoard::_ConvertToBrdFormat {_TBRD} {
             set TBRD($row,$col) [list $newBoard($row,$col) "normal"]
         }
     }
+    set TBRD(hasBlobs) [info exists TBRD(blob,0)]
 }
 proc ::NewBoard::FromFile {fname} {
     variable newBoard
@@ -346,6 +347,7 @@ proc ::NewBoard::FromFile {fname} {
         set newBoard(blob,$idx) $target
         set newBoard(blob,$idx,cells) $cells
     }
+    set newBoard(hasBlobs) [info exists newBlob(blob,0)]
 
     # Check for being able to find a solution
     unset -nocomplain XBRD

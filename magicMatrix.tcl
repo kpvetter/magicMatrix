@@ -800,15 +800,14 @@ proc _ComputeHint {sliceType whichSlice} {
 
     set cells [GetAllCellsForSlice BRD $sliceType $whichSlice]
 
-    foreach index $BRD(indices) {
-        lassign [GetKeyForSliceIndex BRD $sliceType $whichSlice $index] row col
+    foreach index $BRD(indices) cell $cells {
+        lassign $cell row col
         lassign $BRD($row,$col) value state
         if {$state eq "normal"} {
             incr unselectedTotal $value
         } elseif {$state eq "select"} {
             incr selectedTotal $value
         }
-
     }
     set needed [expr {$BRD($sliceType,$whichSlice) - $selectedTotal}]
     set excess [expr {$unselectedTotal - $needed}]
