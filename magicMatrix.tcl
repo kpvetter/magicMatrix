@@ -13,7 +13,7 @@ exit
 #  check starting size w/ screensize
 #  reveal: from logic or by brute force
 #  show size/seed and create board with size/seed
-#  BUG: sometimes undo doesn't fix circled number (multiple steps???)
+#  sudden death mode w/ no undo
 #
 #  auto solve
 #  animation
@@ -108,6 +108,7 @@ proc DoDisplay {} {
         -highlightthickness 0 -bd 0 -bg $COLOR(bg)
     pack .c -side top -fill both -expand 1
     bind all <Escape> DoAllForced
+    bind all <F1> ::Hint::Cheat
     bind all <F4> StartGame
     bind all <Control-Key-z> ::Undo::UndoMove
     bind all <Control-Key-f> ::Hint::BestSlice
@@ -314,6 +315,7 @@ proc DoOneForced {sliceType whichSlice} {
     global BRD
     if {! $BRD(active)} return
 
+    set undoItems {}
     lassign $BRD($sliceType,$whichSlice,meta) target selectedTotal needed unselectedTotal
     if {$needed != 0 && $needed != $unselectedTotal} { return $undoItems}
 
@@ -336,26 +338,25 @@ proc DoAllForced {} {
     # Do one pass to determine who's forced then do another pass forcing just those slices
 
     set whoIsForced {}
-    set cnt 0
     foreach sliceType {row col blob} {
         if {$sliceType eq "blob" && ! $BRD(hasBlobs)} break
         foreach whichSlice $BRD(indices) {
             lassign $BRD($sliceType,$whichSlice,meta) target selectedTotal needed unselectedTotal
             if {$unselectedTotal == 0} continue
             if {$needed == 0 || $needed == $unselectedTotal} {
-                lappend whoIsForced $sliceType $whichSlice
-                incr cnt
+                lappend whoIsForced [list $sliceType $whichSlice]
             }
         }
     }
 
     set allUndoItems {}
-    foreach {sliceType whichSlice} $whoIsForced {
+    foreach item $whoIsForced {
+        lassign $item sliceType whichSlice
         set undoItems [DoOneForced $sliceType $whichSlice]
         lappend allUndoItems {*}$undoItems
     }
     ::Undo::PushMoves $allUndoItems
-    return $cnt
+    return [llength $whoIsForced]
 }
 proc KPVBlob {action {row ?} {col ?}} {
     # hack to manually highlight blobs in a filled in board
@@ -792,15 +793,15 @@ proc GetKeyForSliceIndex {_BRD sliceType whichSlice index} {
     }
     return $key
 }
-proc _ComputeHint {sliceType whichSlice} {
-    global BRD
+proc GetSliceSums {_BRD sliceType whichSlice} {
+    upvar 1 $_BRD BRD
 
     set selectedTotal 0
     set unselectedTotal 0
 
     set cells [GetAllCellsForSlice BRD $sliceType $whichSlice]
 
-    foreach index $BRD(indices) cell $cells {
+    foreach cell $cells {
         lassign $cell row col
         lassign $BRD($row,$col) value state
         if {$state eq "normal"} {
@@ -809,6 +810,13 @@ proc _ComputeHint {sliceType whichSlice} {
             incr selectedTotal $value
         }
     }
+    return [list $selectedTotal $unselectedTotal]
+}
+proc _ComputeHint {sliceType whichSlice} {
+    global BRD
+
+    lassign [GetSliceSums BRD $sliceType $whichSlice] selectedTotal unselectedTotal
+
     set needed [expr {$BRD($sliceType,$whichSlice) - $selectedTotal}]
     set excess [expr {$unselectedTotal - $needed}]
     set BRD($sliceType,$whichSlice,meta) [list \
@@ -1302,14 +1310,12 @@ proc ::Settings::Settings {} {
     ::ttk::label $WAID.title -text "Reveal" -font $::B(font,settings,heading)
     grid $WAID.title
 
-    ::ttk::button $WAID.cell -text "Random cell" -command {::Hint::Cheat cell}
-    ::ttk::button $WAID.row -text "Random slice" -command {::Hint::Cheat slice}
+    ::ttk::button $WAID.row -text "Random slice" -command {::Hint::Cheat}
     ::ttk::button $WAID.fix -text "Fix bad cells" -command ::Hint::FixBad
     ::ttk::button $WAID.best -text "Best slice" -command ::Hint::BestSlice
     ::ttk::button $WAID.show -text "Show Solution" -command {::Settings::ShowSolution 1}
     set solutionFrame $WAID.sol
 
-    grid $WAID.cell -sticky ew
     grid $WAID.row -sticky ew
     grid $WAID.fix -sticky ew
     grid $WAID.best -sticky ew
@@ -1452,7 +1458,16 @@ proc Help {} {
     Bullet "Space bar & Right button on slice sum square: if space is pressed when the right button is down, do all the forced moves"
     Bullet "\"Best slice\": highlights slice that solving would yield the most information"
     Bullet "\"Fix bad cells\": undoes moves until the board is solvable"
-
+}
+proc Shuffle {llist} {
+    set len [llength $llist]
+    while {$len} {
+        set n [expr {int($len*rand())}]
+        set tmp [lindex $llist $n]
+        lset llist $n [lindex $llist [incr len -1]]
+        lset llist $len $tmp
+    }
+    return $llist
 }
 proc lpick {myList} {
     set idx [expr {int(rand() * [llength $myList])}]

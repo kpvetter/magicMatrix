@@ -50,17 +50,9 @@ proc ::Solve::_CheckForSolved {_XBRD} {
     }
     foreach sliceType {row col blob} {
         if {$sliceType eq "blob" && ! $XBRD(hasBlobs)} continue
-        foreach index $XBRD(indices) {
-            set cells [GetAllCellsForSlice XBRD $sliceType $index]
-            set total 0
-            foreach cell $cells {
-                lassign $cell row col
-                lassign $XBRD($row,$col) value state
-                if {$state eq "select"} { incr total $value }
-            }
-            if {$XBRD($sliceType,$index) != $total} {
-                return 0
-            }
+        foreach whichSlice $XBRD(indices) {
+            lassign [GetSliceSums XBRD $sliceType $whichSlice] selectedTotal unselectedTotal
+            if {$XBRD($sliceType,$whichSlice) != $selectedTotal} { return 0 }
         }
     }
     return 1
@@ -164,6 +156,7 @@ proc ::Solve::_ConvertToRowCol {_XBRD sliceType whichSlice cellList} {
     return $result
 }
 proc ::Solve::_GetSliceData {_XBRD sliceType whichSlice} {
+    # returns: needed {{value index}...} for each unselected cell
     upvar 1 $_XBRD XBRD
 
     set selectedSum 0

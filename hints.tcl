@@ -67,7 +67,9 @@ proc ::Hint::DoIt {} {
 
     if {[.c find withtag hintPopup] eq {}} return
     lassign $poppedUpItem sliceType whichSlice
-
+    ::Hint::_Doit $sliceType $whichSlice
+}
+proc ::Hint::_Doit {sliceType whichSlice} {
     set idx -1
     foreach key $::BRD($sliceType,$whichSlice,hint) {
         incr idx
@@ -82,29 +84,27 @@ proc ::Hint::DoIt {} {
     }
     ::Hint::Up $sliceType $whichSlice
 }
-proc ::Hint::Cheat {cheatType} {
+proc ::Hint::Cheat {} {
     global BRD
 
     if {! $BRD(active)} return
     if {! [::Hint::IsOk]} {return [::Hint::FixBad]}
     if {[DoAllForced]} return
 
-    set unfinished [Hint::FindUnfinishedCells]
-    set cell [lpick $unfinished]
-    lassign [split $cell " ,"] action row col
-
-    if {$cheatType eq "cell"} {
-        MakeMove $action $row $col
-    } elseif {$cheatType eq "slice"} {
-        set sliceType [lpick {row col}]
-        set glob [expr {$sliceType eq "row" ? "* $row,*" : "*,$col"}]
-        set all [lsearch -all -glob -inline $unfinished $glob]
-
-        foreach cell $all {
-            lassign [split $cell " ,"] action row1 col1
-            MakeMove $action $row1 $col1
+    set candidates {}
+    foreach sliceType {row col blob} {
+        if {$sliceType eq "blob" && ! $BRD(hasBlobs)} continue
+        foreach i $BRD(indices) {
+            if {[string trim $BRD($sliceType,$i,hint) " $::MIDDLE_DOT"] ne ""} {
+                lappend candidates [list $sliceType $i]
+            }
         }
     }
+    set who [lpick $candidates]
+    lassign $who sliceType whichSlice
+    set tagArrow arrow_${sliceType}_$whichSlice
+    .c itemconfig $tagArrow -fill $::COLOR(target,highlight)
+    ::Hint::_Doit $sliceType $whichSlice
 }
 proc ::Hint::PrettyText {sliceType whichSlice maxLines verbose} {
     global BRD
