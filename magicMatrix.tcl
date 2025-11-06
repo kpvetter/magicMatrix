@@ -75,6 +75,7 @@ set VICTORY_STATE ""
 set FINISHED_STATE "SOLVED!"
 set ALIVE "\u2605"
 set DEAD "\u2606"
+set INFINITY "\u221E"
 
 set COLOR(bg) darkgreen
 set COLOR(grid) white
@@ -419,7 +420,7 @@ namespace eval ::Cutthroat { }
 proc ::Cutthroat::Display {{clear 0}} {
     global BRD
     set msg ""
-    if {[::Settings::IsCutThroat]} {
+    if {[IsCutThroat] && $BRD(lives,total) < 10} {
         set msg [string repeat $::ALIVE $BRD(lives,remaining)]
         append msg [string repeat $::DEAD [expr {$BRD(lives,total)-$BRD(lives,remaining)}]]
     }
@@ -430,6 +431,7 @@ proc ::Cutthroat::CheckMove {newState row col} {
     global BRD
     if {! $BRD(active)} { return 1}
     if {$newState eq "normal"} { return 1 }
+    if {! [IsCutThroat]} { return 1 }
 
     set inSolution [expr {"$row,$col" in [::NewBoard::GetSolution]}]
     if {$newState eq "select" && $inSolution} { return 1}
@@ -1100,7 +1102,9 @@ proc Restart {} {
 
     set BRD(active) True
     set BRD(move,count) 0
-    set BRD(lives,total) 3
+    set BRD(play,mode) $::Settings::MODE(mode)
+    set BRD(lives,total) $::Settings::MODE(lives)
+    if {$BRD(lives,total) eq $::INFINITY} { set BRD(lives,total) 99999 }
     set BRD(lives,remaining) $BRD(lives,total)
     set BRD(solvable) [::Solve::IsSolvable BRD]
 
@@ -1271,6 +1275,10 @@ proc DoButtons {} {
     grid columnconfigure .buttons {1 2 3 4} -uniform a
     grid columnconfigure .buttons {0 100} -weight 1
 }
+proc IsCutThroat {} {
+    return [expr {$::BRD(play,mode) eq "CUTTHROAT"}]
+}
+
 namespace eval ::Settings {
     variable solutionFrame ""
     variable MODE
@@ -1279,7 +1287,7 @@ namespace eval ::Settings {
     variable HINT_NAMES {partial coloring health sets solve}
     variable HINT_DESCRIPTIONS
 
-    set MODE(mode) OPEN_PLAY
+    set MODE(mode) FREE_PLAY
     set MODE(mode) CUTTHROAT
     set MODE(lives) 3
 
@@ -1287,16 +1295,12 @@ namespace eval ::Settings {
         partial "Partial slice sums"
         coloring "Slice coloring"
         health "Health indicator"
-        sets "Show valid combinations"
-        solve "Show slice solution in hint"
+        sets "Hint: valid combinations"
+        solve "Hint: include slice solution"
     }
 
     set BOARD_SIZES(all) {"2 squares" "3 squares" "4 squares" "5 squares" \
                               "6 squares" "7 squares" "8 squares" "9 squares"}
-
-    "proc" IsCutThroat {} {
-        return [expr {$::Settings::MODE(mode) eq "CUTTHROAT"}]
-    }
     "proc" AllOnOff {who how} {
         variable BOARD_SIZES
         variable HINTS
@@ -1336,22 +1340,61 @@ proc ::Settings::Settings {} {
     wm title .settings "$S(title) Settings"
 
     global WHINTS WSIZE
+    set WTOP .settings.f.top
+    set WMODE .settings.f.mode
     set WSIZE .settings.f.lsize
     set WHINTS .settings.f.cas
     set WAID .settings.f.aid
     set WCLOSE .settings.f.close
 
     pack [::ttk::frame .settings.f] -fill both -expand 1
-    ::ttk::label .settings.f.title -text "$S(title) Settings" -font $::B(font,settings,title)
+    ::ttk::frame $WTOP
+    ::ttk::frame $WMODE -borderwidth 2 -relief ridge -pad .1i
     ::ttk::frame $WSIZE -borderwidth 2 -relief ridge -pad .1i
     ::ttk::frame $WHINTS -borderwidth 2 -relief ridge -pad .1i
     ::ttk::frame $WAID -borderwidth 2 -relief ridge -pad .1i
     ::ttk::frame $WCLOSE -borderwidth 2 -relief ridge -pad .1i
 
-    grid .settings.f.title - - -padx .5i -pady .25i
-    grid $WSIZE $WHINTS $WAID -sticky news
-    grid $WCLOSE - - -sticky news
-    grid columnconfigure [winfo parent $WSIZE] {0 1 2} -weight 1
+    # grid $WTOP - - -sticky news
+    # grid $WSIZE $WHINTS $WAID -sticky news
+    # grid $WCLOSE - - -sticky news
+    # grid columnconfigure [winfo parent $WSIZE] {0 1 2} -weight 1
+
+    set columns 4
+    grid $WTOP -columnspan $columns -sticky news
+    set row 1
+    set col -1
+    foreach w [list $WMODE $WSIZE $WHINTS $WAID] {
+        if {[incr col] >= $columns} { incr row ; set col 0 }
+        grid $w -row $row -column $col -sticky nsew
+    }
+    grid $WCLOSE -columnspan $columns -sticky news
+    grid columnconfigure [winfo parent $WSIZE] all -weight 1
+
+    ################################################################
+    # Top title
+    #
+    ::ttk::label $WTOP.title -text "$S(title) Settings" -font $::B(font,settings,title)
+    grid $WTOP.title -padx .5i -pady .25i
+
+    ################################################################
+    # Mode
+    #
+    ::ttk::label $WMODE.title -text "Play Mode" -font $::B(font,settings,heading)
+    grid $WMODE.title
+
+    ::ttk::radiobutton $WMODE.free -text "Free Play" -variable ::Settings::MODE(mode) -value "FREE_PLAY"
+    ::ttk::radiobutton $WMODE.cut -text "Challenge" -variable ::Settings::MODE(mode) -value "CUTTHROAT"
+    ::ttk::label $WMODE.lman -text "Number of lives"
+    tk_optionMenu $WMODE.men ::Settings::MODE(lives) 1 2 3 4 5 6 7 8 9 $::INFINITY
+
+    ::ttk::button $WMODE.restart -text "Restart" -command Restart
+
+    grid $WMODE.free -sticky w -padx {.2i 0}
+    grid $WMODE.cut -sticky w -padx {.2i 0}
+    grid $WMODE.lman -sticky w -padx {.2i 0} -pady {.1i 0}
+    grid $WMODE.men -sticky w -padx {.2i 0}
+    grid $WMODE.restart -pady {.2i 0}
 
     ################################################################
     # Size panel
@@ -1375,8 +1418,8 @@ proc ::Settings::Settings {} {
     ::ttk::button $WSIZE.all0 -text "All on" -command {::Settings::AllOnOff sizes 1}
     ::ttk::button $WSIZE.all1 -text "All off" -command {::Settings::AllOnOff sizes 0}
     ::ttk::button $WSIZE.go -text "New Board" -command StartGame
-    grid $WSIZE.all0 $WSIZE.all1 -pady {.2i 0}
-    grid $WSIZE.go - -pady .2i
+    grid $WSIZE.all0 $WSIZE.all1 -pady .2i
+    grid $WSIZE.go -
 
     ################################################################
     # Computer Assistance
@@ -1402,7 +1445,7 @@ proc ::Settings::Settings {} {
     ::ttk::button $WAID.row -text "Random slice" -command {::Hint::Cheat}
     ::ttk::button $WAID.fix -text "Fix bad cells" -command ::Hint::FixBad
     ::ttk::button $WAID.best -text "Best slice" -command ::Hint::BestSlice
-    ::ttk::button $WAID.show -text "Show Solution" -command {::Settings::ShowSolution 1}
+    ::ttk::button $WAID.show -text "Show Solution" -command {::Settings::ShowSolution 1 }
     set solutionFrame $WAID.sol
 
     grid $WAID.row -sticky ew
@@ -1433,6 +1476,10 @@ proc ::Settings::ShowSolution {forced} {
     variable solutionFrame
     if {! $forced && ! [winfo exists $solutionFrame]} return
 
+    if {[winfo exists $solutionFrame]} {
+        destroy $solutionFrame
+        return
+    }
     destroy $solutionFrame
     ::ttk::frame $solutionFrame -borderwidth 2 -relief solid
     grid $solutionFrame -pady {.1i 0}
