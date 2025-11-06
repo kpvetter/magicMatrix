@@ -36,9 +36,6 @@ proc ::Solve::IsSolvable {_BRD} {
 
     return $solved
 }
-proc ::Solve::GetSolution {} {
-    return $::Solve::solution
-}
 
 proc ::Solve::_CheckForSolved {_XBRD} {
     upvar 1 $_XBRD XBRD

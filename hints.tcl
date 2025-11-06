@@ -230,26 +230,6 @@ proc ::Hint::FindBad {} {
     }
     return $bad
 }
-proc ::Hint::FindUnfinishedCells {} {
-    global BRD
-
-    set solution [::NewBoard::GetSolution]
-    set unfinished {}
-
-    foreach row $BRD(indices) {
-        foreach col $BRD(indices) {
-            set key "$row,$col"
-            set state [lindex $BRD($key) 1]
-            if {$state ne "normal"} continue
-            if {$key in $solution} {
-                lappend unfinished [list select $key]
-            } else {
-                lappend unfinished [list kill $key]
-            }
-        }
-    }
-    return $unfinished
-}
 proc ::Hint::QuickPass {} {
     global BRD
 

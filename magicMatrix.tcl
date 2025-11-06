@@ -64,17 +64,17 @@ set ONEBAR "\u23af"
 set STRIKETHROUGH "\u0336"
 set SUPERPLUS "\u207A"
 set SUPERMINUS "\u207B"
-# set GOOD_STATE "\u2665\ufe0f "
-set GOOD_STATE "\u2764\ufe0f "
-set UNKNOWN_STATE "\ufffd "
-set BAD_STATE "\u26d4\ufe0f "       ;# No entry
+# set GOOD_STATE "\u2665\ufe0f"
+set GOOD_STATE "\u2764\ufe0f"
+set UNKNOWN_STATE "\ufffd"
+set BAD_STATE "\u26d4\ufe0f"       ;# No entry
 # set BAD_STATE "\u26a0\ufe0f"     ;# Warning sign
 # set BAD_STATE "\u2622\ufe0f"     ;# Radioactive sign
 # set VICTORY_STATE "\u2747\ufe0f"
 set VICTORY_STATE ""
 set FINISHED_STATE "SOLVED!"
-
-
+set ALIVE "\u2605"
+set DEAD "\u2606"
 
 set COLOR(bg) darkgreen
 set COLOR(grid) white
@@ -236,7 +236,9 @@ proc DrawBoard {size} {
 
     .c create text 10 $B(height) -tag hint -anchor sw -fill cyan
     .c create text $B(width2) $B(height) -tag finished -anchor s -font $B(font,state) -fill magenta
+    .c create text 5 $B(height) -tag cutthroat -anchor s -font $B(font,state) -fill red -anchor sw
     .c create text $B(width) $B(height) -tag state -anchor se -font $B(font,state) -fill red
+    .c move state -[font measure $B(font,state) " "] 0
     .c bind state <1> ::Hint::ShowBad
     .c bind state <Double-Button-1> ::Hint::FixBad
 
@@ -413,6 +415,66 @@ proc KPVBlob {action {row ?} {col ?}} {
         set kpvBlobCells($kpvBlobId) {}
     }
 }
+namespace eval ::Cutthroat { }
+proc ::Cutthroat::Display {{clear 0}} {
+    global BRD
+    set msg ""
+    if {[::Settings::IsCutThroat]} {
+        set msg [string repeat $::ALIVE $BRD(lives,remaining)]
+        append msg [string repeat $::DEAD [expr {$BRD(lives,total)-$BRD(lives,remaining)}]]
+    }
+    if {$clear} { set msg "" }
+    .c itemconfig cutthroat -text $msg
+}
+proc ::Cutthroat::CheckMove {newState row col} {
+    global BRD
+    if {! $BRD(active)} { return 1}
+    if {$newState eq "normal"} { return 1 }
+
+    set inSolution [expr {"$row,$col" in [::NewBoard::GetSolution]}]
+    if {$newState eq "select" && $inSolution} { return 1}
+    if {$newState eq "kill" && ! $inSolution} { return 1}
+
+    incr BRD(lives,remaining) -1
+    ::Cutthroat::Display
+    return 0
+}
+# proc ::Cutthroat::EndOfLife {} {
+#     set msg "Out of Lives!"
+#     set detail "Click to get another life"
+#     tk_messageBox -message $msg -detail $detail -type ok -parent . -icon warning
+#     set BRD(lives,remaining) 1
+#     ::Cutthroat::Display
+# }
+proc ::Cutthroat::EndOfLife {} {
+    set w .eol
+    destroy $w
+    ::ttk::frame $w -padding .25i -borderwidth 3 -relief ridge
+    set msg "Out of Lives!"
+    set detail "Click to get another life"
+
+    ::ttk::label $w.m -text $msg -font $::B(font,grid) -foreground red
+    ::ttk::label $w.d -text $detail -font $::B(font,active)
+
+    ::ttk::button $w.l -text "New life" -command [list ::Cutthroat::EndOfLifeDone $w new]
+    ::ttk::button $w.r -text "Restart" -command [list ::Cutthroat::EndOfLifeDone $w restart]
+
+    grid $w.m -
+    grid $w.d - -pady {0 .2i}
+    grid $w.l $w.r
+
+    place $w -in .c -relx .5 -rely .5 -anchor n
+    tkwait window $w
+}
+proc ::Cutthroat::EndOfLifeDone {w how} {
+    destroy $w
+    if {$how eq "restart"} {
+        Restart
+        return
+    }
+    set ::BRD(lives,remaining) 1
+    ::Cutthroat::Display
+}
 proc ButtonAction {newState row col} {
     global BRD
     focus -force .
@@ -421,6 +483,17 @@ proc ButtonAction {newState row col} {
 
     set oldState [lindex $BRD($row,$col) 1]
     ::Undo::PushMoves [list $oldState $row $col]
+
+    set okMove [::Cutthroat::CheckMove $newState $row $col]
+    if {! $okMove} {
+        ::Explode::Burst $row $col
+
+        if {$BRD(lives,remaining) <= 0} {
+            update
+            ::Cutthroat::EndOfLife
+        }
+        return
+    }
 
     MakeMove $newState $row $col
 }
@@ -586,7 +659,7 @@ proc SetUpBoardParams {size} {
     set B(font,sums) [FitFont "888" $B(cellSize)]
     set B(font,hints) [FitFont "12 34 56 78" $B(cellSize)]
     set B(font,active) [FitFont "34 56 78" $B(cellSize)]
-    set B(font,victory) [FitFont "Solved!" [expr {$B(width) - $S(margins)}]]
+    set B(font,victory) [FitFont "Perfect!" [expr {$B(width) - $S(margins)}]]
     set B(font,state) [FitFont "888" $B(cellSize) Times]
     set B(font,blob) [FitFont "88" $B(blobSize)]
 
@@ -1022,12 +1095,15 @@ proc Restart {} {
 
     set BRD(active) True
     set BRD(move,count) 0
+    set BRD(lives,total) 3
+    set BRD(lives,remaining) $BRD(lives,total)
     set BRD(solvable) [::Solve::IsSolvable BRD]
 
     ::Undo::Clear
     .c itemconfig tagVictory -text ""
     ShowState
     ::Settings::ShowSolution 0
+    ::Cutthroat::Display
 }
 
 ################################################################
@@ -1192,10 +1268,15 @@ proc DoButtons {} {
 }
 namespace eval ::Settings {
     variable solutionFrame ""
-    variable SIZES
+    variable MODE
+    variable BOARD_SIZES
     variable HINTS
     variable HINT_NAMES {partial coloring health sets solve}
     variable HINT_DESCRIPTIONS
+
+    set MODE(mode) OPEN_PLAY
+    set MODE(mode) CUTTHROAT
+    set MODE(lives) 3
 
     array set HINT_DESCRIPTIONS {
         partial "Partial slice sums"
@@ -1205,17 +1286,20 @@ namespace eval ::Settings {
         solve "Show slice solution in hint"
     }
 
-    set SIZES(all) {"2 squares" "3 squares" "4 squares" "5 squares" \
-                        "6 squares" "7 squares" "8 squares" "9 squares"}
+    set BOARD_SIZES(all) {"2 squares" "3 squares" "4 squares" "5 squares" \
+                              "6 squares" "7 squares" "8 squares" "9 squares"}
 
+    "proc" IsCutThroat {} {
+        return [expr {$::Settings::MODE(mode) eq "CUTTHROAT"}]
+    }
     "proc" AllOnOff {who how} {
-        variable SIZES
+        variable BOARD_SIZES
         variable HINTS
         variable HINT_NAMES
 
         if {$who eq "sizes"} {
-            foreach size $SIZES(all) {
-                set SIZES($size) $how
+            foreach size $BOARD_SIZES(all) {
+                set BOARD_SIZES($size) $how
             }
         } elseif {$who eq "hints"} {
             foreach x $HINT_NAMES {
@@ -1234,7 +1318,7 @@ namespace eval ::Settings {
 }
 
 proc ::Settings::Settings {} {
-    variable SIZES
+    variable BOARD_SIZES
     variable HINTS
     variable HINT_NAMES
     variable solutionFrame
@@ -1273,9 +1357,9 @@ proc ::Settings::Settings {} {
     set row 1
     set col 0
 
-    foreach size $SIZES(all) {
+    foreach size $BOARD_SIZES(all) {
         set w $WSIZE.rb_$size
-        ::ttk::checkbutton $w -variable ::Settings::SIZES($size) -text $size
+        ::ttk::checkbutton $w -variable ::Settings::BOARD_SIZES($size) -text $size
         bind $w <$::S(button,right)> [list StartGame [lindex $size 0]]
         grid $w -row $row -column $col -sticky w
         if {[incr col] > 1} {
@@ -1328,11 +1412,11 @@ proc ::Settings::Settings {} {
     pack $WCLOSE.close -pady .2i
 }
 proc ::Settings::GetBoardSize {{sizeOverride ?}} {
-    variable SIZES
+    variable BOARD_SIZES
 
     if {$sizeOverride ne "?"} { return $sizeOverride }
 
-    set choices [lmap {k v} [array get SIZES *sq*] { if {! $v} continue ; lindex $k 0}]
+    set choices [lmap {k v} [array get BOARD_SIZES *sq*] { if {! $v} continue ; lindex $k 0}]
     if {[llength $choices] == 0 || [llength $choices] == 8} {
         set size [RandomTriangular 2 10 7]
     } else {
@@ -1496,6 +1580,8 @@ namespace eval Explode {
     set STATIC(explode,totalTime) 300
     set STATIC(implode,delay) 50
     set STATIC(implode,totalTime) 300
+    set STATIC(burst,delay) 100
+    set STATIC(burst,totalTime) 600
 
     array set AIDS {}
 }
@@ -1552,6 +1638,20 @@ proc ::Explode::Implode {row col} {
     set lastColor [.c itemcget $tag -fill]
     set AIDS($tag) [after 10 \
                         [list ::Explode::ImplodeAnim $tag $STATIC(implode,delay) $colors $lastColor]]
+}
+proc ::Explode::Burst {row col} {
+    global B
+    variable STATIC
+
+    set steps [expr {$STATIC(burst,totalTime) / $STATIC(burst,delay)}]
+    set colors {}
+    for {set i 0} {$i < $steps} {incr i 2} {
+        lappend colors "red" "white"
+    }
+    set tag bg_${row}_$col
+    set lastColor [.c itemcget $tag -fill]
+    set AIDS($tag) [after 10 \
+                        [list ::Explode::ImplodeAnim $tag $STATIC(burst,delay) $colors $lastColor]]
 }
 proc ::Explode::ImplodeAnim {tag delay colors lastColor} {
     variable AIDS

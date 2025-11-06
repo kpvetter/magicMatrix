@@ -26,8 +26,9 @@ namespace eval ::Victory {
 proc ::Victory::Victory {{type ?}} {
     variable config
 
+    ::Cutthroat::Display True
     ::Victory::SetupColors $type
-    ::Victory::Message
+    set msg [::Victory::Message]
     set tags [lmap x [::NewBoard::GetSolution] {regsub {(.),(.)} $x {circle_\1_\2}}]
     foreach row $::BRD(indices) {
         lappend tags "bg_row_$row"
@@ -38,7 +39,7 @@ proc ::Victory::Victory {{type ?}} {
     }
     set config(counter) 0
     set config(aid,stop) [after $config(duration,milliseconds) ::Victory::Stop some]
-    set config(aid,finished) [after $config(duration,milliseconds) .c itemconfig finished -text $::FINISHED_STATE]
+    set config(aid,finished) [after $config(duration,milliseconds) .c itemconfig finished -text $msg]
 
     ::Victory::Sparkle $tags
     return $config(sparkle,type)
@@ -92,6 +93,9 @@ proc ::Victory::Message {} {
     global B
 
     set text " Solved! "
+    if {$::BRD(lives,remaining) == $::BRD(lives,total)} {
+        set text " Perfect! "
+    }
     set font "$::B(font,victory) -size 30"
 
     .c create text $B(width2) $B(height2) -text $text -fill black \
@@ -99,6 +103,7 @@ proc ::Victory::Message {} {
     .c create text $B(width2) $B(height2) -text $text -fill red \
         -anchor c -font $font -tag {victory victory2}
     .c move victory2 6 9
+    return [string trim $text]
 }
 proc ::Victory::Stop {what} {
     # Force victory sequence to stop
