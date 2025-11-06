@@ -453,15 +453,19 @@ proc ::Cutthroat::EndOfLife {} {
     set msg "Out of Lives!"
     set detail "Click to get another life"
 
+    ::ttk::label $w.i -image ::img::icon
     ::ttk::label $w.m -text $msg -font $::B(font,grid) -foreground red
     ::ttk::label $w.d -text $detail -font $::B(font,active)
 
-    ::ttk::button $w.l -text "New life" -command [list ::Cutthroat::EndOfLifeDone $w new]
-    ::ttk::button $w.r -text "Restart" -command [list ::Cutthroat::EndOfLifeDone $w restart]
+    ::ttk::frame $w.b
+    ::ttk::button $w.b.l -text "New life" -command [list ::Cutthroat::EndOfLifeDone $w new]
+    ::ttk::button $w.b.r -text "Restart" -command [list ::Cutthroat::EndOfLifeDone $w restart]
 
-    grid $w.m -
-    grid $w.d - -pady {0 .2i}
-    grid $w.l $w.r
+    grid $w.i $w.m -
+    grid x $w.d - -pady {0 .2i}
+    grid $w.b - - -sticky ew
+    grid $w.b.l $w.b.r
+    grid columnconfigure $w.b all -weight 1
 
     place $w -in .c -relx .5 -rely .5 -anchor n
     tkwait window $w
@@ -486,7 +490,8 @@ proc ButtonAction {newState row col} {
 
     set okMove [::Cutthroat::CheckMove $newState $row $col]
     if {! $okMove} {
-        ::Explode::Burst $row $col
+        ::Explode::Burst bg_${row}_$col
+        ::Explode::Burst cutthroat
 
         if {$BRD(lives,remaining) <= 0} {
             update
@@ -1639,7 +1644,7 @@ proc ::Explode::Implode {row col} {
     set AIDS($tag) [after 10 \
                         [list ::Explode::ImplodeAnim $tag $STATIC(implode,delay) $colors $lastColor]]
 }
-proc ::Explode::Burst {row col} {
+proc ::Explode::Burst {tag} {
     global B
     variable STATIC
 
@@ -1648,7 +1653,6 @@ proc ::Explode::Burst {row col} {
     for {set i 0} {$i < $steps} {incr i 2} {
         lappend colors "red" "white"
     }
-    set tag bg_${row}_$col
     set lastColor [.c itemcget $tag -fill]
     set AIDS($tag) [after 10 \
                         [list ::Explode::ImplodeAnim $tag $STATIC(burst,delay) $colors $lastColor]]
