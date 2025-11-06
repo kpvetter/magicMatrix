@@ -5,7 +5,7 @@ exit
 
 ##+##########################################################################
 #
-# numberSums.tcl -- <description>
+# Magic Matrix.tcl -- plays a numbers in a matrix selection game
 # by Keith Vetter 2025-08-19
 #
 # TODO:
@@ -13,7 +13,7 @@ exit
 #  check starting size w/ screensize
 #  reveal: from logic or by brute force
 #  show size/seed and create board with size/seed
-#  sudden death mode w/ no undo
+#  is clicking empty cell a bad move???
 #
 #  auto solve
 #  animation
@@ -1542,7 +1542,7 @@ proc Help {} {
     T "with an array of slice sums for every row "
     T "and column. The goal is to select some numbers and kill other numbers "
     T "so that the sum of the selected numbers match the slice sum for "
-    T "that row and column -- aka 'slice'.\n\n"
+    T "that row and column.\n\n"
 
     T "Game Play\n" h2
 

@@ -299,6 +299,15 @@ proc ::NewBoard::_ConvertToBrdFormat {_TBRD} {
     set TBRD(hasBlobs) [info exists TBRD(blob,0)]
 }
 proc ::NewBoard::FromFile {fname} {
+    # Format:
+    #  xx ## ## ##
+    #  ##  #  #  #
+    #  ##  #  #  #
+    #  ##  #  #  #
+    #  blob ## {r c} {r c} {r c} ...
+    #  blob ## {r c} {r c} {r c} ...
+    #  blob ## {r c} {r c} {r c} ...
+
     variable newBoard
     variable solution
 
