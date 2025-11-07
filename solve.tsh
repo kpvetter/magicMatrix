@@ -25,10 +25,10 @@ proc ::Solve::IsSolvable {_BRD} {
     # Copy board into a temp array
     array set XBRD [array get BRD]
 
-    set solvingPasses 0
+    set solvingPasses {}
     while {1} {
-        incr solvingPasses
         set progressMade [::Solve::_Progress XBRD]
+        lappend solvingPasses $progressMade
         if {! $progressMade} break
     }
     set solved [::Solve::_CheckForSolved XBRD]
@@ -68,7 +68,7 @@ proc ::Solve::_Progress {_XBRD} {
             lassign [::Solve::_TryProgressing XBRD $sliceType $whichSlice] keep delete
 
             if {[::Solve::_UpdateBoard XBRD $keep $delete]} {
-                set progressFlag 1
+                incr progressFlag
             }
         }
     }
@@ -197,7 +197,9 @@ proc ::Solve::_SaveSolution {_XBRD} {
 proc ::Solve::ShowBoard {_XBRD} {
     upvar 1 $_XBRD XBRD
 
+    puts "xx[join [lmap x $XBRD(indices) { format %3d $XBRD(col,$x) }] {}]"
     foreach row $XBRD(indices) {
+        puts -nonewline [format "%2d  " $XBRD(row,$row)]
         foreach col $XBRD(indices) {
             lassign $XBRD($row,$col) value state
             set suffix " "

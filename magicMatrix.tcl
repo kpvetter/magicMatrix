@@ -13,7 +13,10 @@ exit
 #  check starting size w/ screensize
 #  reveal: from logic or by brute force
 #  show size/seed and create board with size/seed
-#  is clicking empty cell a bad move???
+#  hide targets when they're at 0
+#  disable undo in cutthroat mode
+#  remove free play???
+#  remove undo button in cutthroat && disable ctrl-Z
 #
 #  auto solve
 #  animation
@@ -420,6 +423,8 @@ namespace eval ::Cutthroat { }
 proc ::Cutthroat::Display {{clear 0}} {
     global BRD
     set msg ""
+
+    ToggleUndoButton [expr {[IsCutThroat] ? "off" : "on"}]
     if {[IsCutThroat] && $BRD(lives,total) < 10} {
         set msg [string repeat $::ALIVE $BRD(lives,remaining)]
         append msg [string repeat $::DEAD [expr {$BRD(lives,total)-$BRD(lives,remaining)}]]
@@ -441,13 +446,6 @@ proc ::Cutthroat::CheckMove {newState row col} {
     ::Cutthroat::Display
     return 0
 }
-# proc ::Cutthroat::EndOfLife {} {
-#     set msg "Out of Lives!"
-#     set detail "Click to get another life"
-#     tk_messageBox -message $msg -detail $detail -type ok -parent . -icon warning
-#     set BRD(lives,remaining) 1
-#     ::Cutthroat::Display
-# }
 proc ::Cutthroat::EndOfLife {} {
     set w .eol
     destroy $w
@@ -455,15 +453,14 @@ proc ::Cutthroat::EndOfLife {} {
     set msg "Out of Lives!"
     set detail "Click to get another life"
 
-    ::ttk::label $w.i -image ::img::icon
     ::ttk::label $w.m -text $msg -font $::B(font,grid) -foreground red
     ::ttk::label $w.d -text $detail -font $::B(font,active)
 
     ::ttk::frame $w.b
     ::ttk::button $w.b.l -text "New life" -command [list ::Cutthroat::EndOfLifeDone $w new]
-    ::ttk::button $w.b.r -text "Restart" -command [list ::Cutthroat::EndOfLifeDone $w restart]
+    ::ttk::button $w.b.r -text "Start Over" -command [list ::Cutthroat::EndOfLifeDone $w restart]
 
-    grid $w.i $w.m -
+    grid $w.m - -
     grid x $w.d - -pady {0 .2i}
     grid $w.b - - -sticky ew
     grid $w.b.l $w.b.r
@@ -488,7 +485,7 @@ proc ButtonAction {newState row col} {
     if {! $BRD(active)} return
 
     set oldState [lindex $BRD($row,$col) 1]
-    ::Undo::PushMoves [list $oldState $row $col]
+    if {$oldState ne "normal" && [IsCutThroat]} return
 
     set okMove [::Cutthroat::CheckMove $newState $row $col]
     if {! $okMove} {
@@ -502,6 +499,7 @@ proc ButtonAction {newState row col} {
         return
     }
 
+    ::Undo::PushMoves [list $oldState $row $col]
     MakeMove $newState $row $col
 }
 proc MakeMove {newState row col} {
@@ -1260,7 +1258,7 @@ image create photo ::img::quickpass -data {
 
 
 proc DoButtons {} {
-    global S COLOR
+    global S
 
     # Buttons in lower pane
     button .buttons.play -text "New" -image ::img::play -compound top -command StartGame
@@ -1270,10 +1268,27 @@ proc DoButtons {} {
     button .buttons.quick -text "Quick Pass" -image ::img::quickpass -compound top -command ::Hint::QuickPass
     bind .buttons.quick <$::S(button,right)> ::Hint::BestSlice
 
-    grid x .buttons.play .buttons.undo .buttons.automove .buttons.quick \
+    grid x .buttons.play .buttons.automove .buttons.quick .buttons.undo \
         -padx .1i -pady .2i -sticky ew
     grid columnconfigure .buttons {1 2 3 4} -uniform a
     grid columnconfigure .buttons {0 100} -weight 1
+
+    # For toggling undo button off and on
+    set S(undo,button) [list .buttons.undo [grid info .buttons.undo]]
+}
+proc ToggleUndoButton {onoff} {
+    # Tried using 'grid forget' but the display wouldn't update immediately
+
+    lassign $::S(undo,button) w config
+
+    if {$onoff eq "on"} {
+        if {! [winfo exists $w]} {
+            button $w -text "Undo" -image ::img::undo -compound top -command ::Undo::UndoMove
+            grid $w {*}$config
+        }
+    } else {
+        destroy $w
+    }
 }
 proc IsCutThroat {} {
     return [expr {$::BRD(play,mode) eq "CUTTHROAT"}]
@@ -1387,6 +1402,7 @@ proc ::Settings::Settings {} {
     ::ttk::radiobutton $WMODE.cut -text "Challenge" -variable ::Settings::MODE(mode) -value "CUTTHROAT"
     ::ttk::label $WMODE.lman -text "Number of lives"
     tk_optionMenu $WMODE.men ::Settings::MODE(lives) 1 2 3 4 5 6 7 8 9 $::INFINITY
+    $WMODE.men config -width 10
 
     ::ttk::button $WMODE.restart -text "Restart" -command Restart
 
@@ -1462,7 +1478,7 @@ proc ::Settings::Settings {} {
 proc ::Settings::GetBoardSize {{sizeOverride ?}} {
     variable BOARD_SIZES
 
-    if {$sizeOverride ne "?"} { return $sizeOverride }
+    if {$sizeOverride ne "?"} {return [expr {max(2, min(9, $sizeOverride))}]}
 
     set choices [lmap {k v} [array get BOARD_SIZES *sq*] { if {! $v} continue ; lindex $k 0}]
     if {[llength $choices] == 0 || [llength $choices] == 8} {
@@ -1747,6 +1763,9 @@ if {0} {
     set seed 1418909994
     StartGame $size $seed
 
+    set size 9
+    set seed 4012667637
+    StartGame $size $seed
 }
 proc blob {{fname puzzles/color_1.txt}} {
     StartGame ? ? $fname

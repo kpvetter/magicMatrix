@@ -17,7 +17,7 @@ namespace eval NewBoard {
     variable seed
 }
 
-proc ::NewBoard::Create {size bias {seed ?}} {
+proc ::NewBoard::Create {size bias seed} {
     variable newBoard
     global createAttempts
 
@@ -67,11 +67,11 @@ proc ::NewBoard::Debug {{python False}} {
 
     set result ""
     if {! $python} {
-        append result "set size $$newBoard(size)\n"
+        append result "set size $newBoard(size)\n"
         append result "set seed $seed\n"
         append result "set solution {[::NewBoard::GetSolution]}\n"
         append result "set BB {\n"
-        set line "    {- "
+        set line "    {xx"
         foreach col $newBoard(indices) {
             append line [format " %2d" $newBoard(col,$col)]
         }
