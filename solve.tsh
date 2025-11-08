@@ -19,6 +19,7 @@ namespace eval ::Solve {
 }
 
 proc ::Solve::IsSolvable {_BRD} {
+    # Returns 0 if unsolvable otherwise # of passes required to solve it
     global solvingPasses
     upvar 1 $_BRD BRD
 
@@ -31,10 +32,11 @@ proc ::Solve::IsSolvable {_BRD} {
         lappend solvingPasses $progressMade
         if {! $progressMade} break
     }
-    set solved [::Solve::_CheckForSolved XBRD]
-    ::Solve::_SaveSolution XBRD
+    ::Solve::ExtractSolution XBRD
 
-    return $solved
+    set isSolvable [::Solve::_CheckForSolved XBRD]
+    if {$isSolvable} { return [llength $solvingPasses] }
+    return 0
 }
 proc ::Solve::GetSolution {} {
     return $::Solve::solution
@@ -180,7 +182,7 @@ proc ::Solve::_GetSliceData {_XBRD sliceType whichSlice} {
     set target [expr {$XBRD($sliceType,$whichSlice) - $selectedSum}]
     return [list $target $unselectedCells]
 }
-proc ::Solve::_SaveSolution {_XBRD} {
+proc ::Solve::ExtractSolution {_XBRD} {
     variable solution
     upvar 1 $_XBRD XBRD
 

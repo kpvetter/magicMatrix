@@ -280,6 +280,9 @@ namespace eval ::Undo {
 
     "proc" PushMoves {undoItems} {
         variable undoStack
+        if {! $::BRD(active)} return
+        # if {[IsCutThroat]} return
+
         if {$undoItems ne {}} {
             lappend undoStack $undoItems
         }
@@ -290,6 +293,7 @@ namespace eval ::Undo {
 
         if {! $::BRD(active)} return
         if {$undoStack eq {}} return
+        # if {[IsCutThroat]} return
 
         set lastMove [lindex $undoStack end]
         set undoStack [lrange $undoStack 0 end-1]
@@ -365,34 +369,54 @@ proc DoAllForced {} {
     return [llength $whoIsForced]
 }
 proc KPVBlob {action {row ?} {col ?}} {
-    # hack to manually highlight blobs in a filled in board
-    global kpvBlobId kpvBlobCells
+    # Manual way to create blobs for an existing board
+    #   % KPVBlob init
+    #   left click to form blobs (it will detect when to start new blob)
+    #   % KPVBlob data -> data for the board
+    #   manually fill in the blob targets
+    global BRD
+    global kpvBlobId kpvBlobCells kpvBlobTarget
 
     if {$action eq "init"} {
-        set kpvBlobId 0
+        destroy .blob
+        entry .blob -font $::B(font,grid) -width 2 -relief solid -textvariable kpvBlobTarget -justify c
+        place .blob -x 50 -y 50 -anchor nw
+
+        set kpvBlobId -1
         array unset kpvBlobCells
-        set size $::BRD(size)
         foreach row $BRD(indices) {
             set kpvBlobCells($row) {}
             foreach col $BRD(indices) {
                 set tagBox grid_${row}_$col
-
-                .c bind $tagBox <ButtonRelease-${::S(button,middle)}> \
+                .c bind $tagBox <ButtonRelease-1> \
                     [list KPVBlob "add" $row $col]
+                if {"$row,$col" in [::NewBoard::GetSolution]} {
+                    ::Explode::Explode $row $col
+                }
             }
         }
+        KPVBlob next
         return
     }
     if {$action eq "next"} {
         incr kpvBlobId
-        set kpvBlobCells($kpvBlobId) {}
+        if {$kpvBlobId < $BRD(size)} {
+            set kpvBlobTarget $kpvBlobId
+            .blob config -bg [lindex $::COLOR(blobs) $kpvBlobId]
+        } else {
+            set data [KPVBlob data]
+            clipboard clear ; clipboard append $data
+            puts $data
+            puts "KPV: complete board -- data copied to the clipboard"
+        }
         return
     }
     if {$action eq "data"} {
         set result [join $::BB "\n"]
         append result "\n\n"
 
-        foreach id [lsort -dictionary [array names kpvBlobCells]] {
+        foreach id $BRD(indices) {
+            if {$kpvBlobCells($id) eq {}} continue
             set target 0
             foreach cell $kpvBlobCells($id) {
                 lassign $cell row col
@@ -400,9 +424,14 @@ proc KPVBlob {action {row ?} {col ?}} {
                     incr target [lindex $::BRD($row,$col) 0]
                 }
             }
-            set line "blob $target $kpvBlobCells($id)\n"
+            if {$target == 0 && $BRD(solvable)} {
+                puts "KPV: ERROR: blob $id has no selected cells"
+            }
+            set cells [lsort $kpvBlobCells($id)]
+            set line "blob $target $cells\n"
             append result $line
         }
+        destroy .blob
         return $result
     }
     set cell [list $row $col]
@@ -415,8 +444,7 @@ proc KPVBlob {action {row ?} {col ?}} {
     .c itemconfig $tagBg -fill [lindex $::COLOR(blobs) $kpvBlobId]
     if {[llength $kpvBlobCells($kpvBlobId)] == $::BRD(size)} {
         puts "KPV: blob is full-sized -- moving to next"
-        incr kpvBlobId
-        set kpvBlobCells($kpvBlobId) {}
+        KPVBlob next
     }
 }
 namespace eval ::Cutthroat { }
@@ -424,7 +452,6 @@ proc ::Cutthroat::Display {{clear 0}} {
     global BRD
     set msg ""
 
-    ToggleUndoButton [expr {[IsCutThroat] ? "off" : "on"}]
     if {[IsCutThroat] && $BRD(lives,total) < 10} {
         set msg [string repeat $::ALIVE $BRD(lives,remaining)]
         append msg [string repeat $::DEAD [expr {$BRD(lives,total)-$BRD(lives,remaining)}]]
@@ -459,10 +486,11 @@ proc ::Cutthroat::EndOfLife {} {
     ::ttk::frame $w.b
     ::ttk::button $w.b.l -text "New life" -command [list ::Cutthroat::EndOfLifeDone $w new]
     ::ttk::button $w.b.r -text "Start Over" -command [list ::Cutthroat::EndOfLifeDone $w restart]
+    bind $w.b.l <$::S(button,right)> [list ::Cutthroat::EndOfLifeDone $w cheat]
 
-    grid $w.m - -
-    grid x $w.d - -pady {0 .2i}
-    grid $w.b - - -sticky ew
+    grid $w.m
+    grid $w.d -pady {0 .2i}
+    grid $w.b -sticky ew
     grid $w.b.l $w.b.r
     grid columnconfigure $w.b all -weight 1
 
@@ -470,12 +498,17 @@ proc ::Cutthroat::EndOfLife {} {
     tkwait window $w
 }
 proc ::Cutthroat::EndOfLifeDone {w how} {
+    global BRD
+
     destroy $w
     if {$how eq "restart"} {
         Restart
         return
     }
-    set ::BRD(lives,remaining) 1
+    set BRD(lives,remaining) 1
+    if {$how eq "cheat"} {
+        set BRD(lives,remaining) $BRD(lives,total)
+    }
     ::Cutthroat::Display
 }
 proc ButtonAction {newState row col} {
@@ -501,6 +534,9 @@ proc ButtonAction {newState row col} {
 
     ::Undo::PushMoves [list $oldState $row $col]
     MakeMove $newState $row $col
+    if {$::Settings::MODE(autoforce)} {
+        DoAllForced
+    }
 }
 proc MakeMove {newState row col} {
     global BRD
@@ -1075,9 +1111,9 @@ proc StartGame {{sizeOverride ?} {seed ?} {fname ?}} {
             if {$n eq "no"} return
         }
     } else {
-        set size [::Settings::GetBoardSize $sizeOverride]
+        lassign [::Settings::GetBoardSize $sizeOverride] size extraHard
         set defaultBias 8
-        ::NewBoard::Create $size $defaultBias $seed
+        ::NewBoard::Create $size $defaultBias $seed $extraHard
     }
 
     set BB [::NewBoard::GetBoard]
@@ -1268,27 +1304,10 @@ proc DoButtons {} {
     button .buttons.quick -text "Quick Pass" -image ::img::quickpass -compound top -command ::Hint::QuickPass
     bind .buttons.quick <$::S(button,right)> ::Hint::BestSlice
 
-    grid x .buttons.play .buttons.automove .buttons.quick .buttons.undo \
+    grid x .buttons.play .buttons.undo .buttons.automove .buttons.quick \
         -padx .1i -pady .2i -sticky ew
     grid columnconfigure .buttons {1 2 3 4} -uniform a
     grid columnconfigure .buttons {0 100} -weight 1
-
-    # For toggling undo button off and on
-    set S(undo,button) [list .buttons.undo [grid info .buttons.undo]]
-}
-proc ToggleUndoButton {onoff} {
-    # Tried using 'grid forget' but the display wouldn't update immediately
-
-    lassign $::S(undo,button) w config
-
-    if {$onoff eq "on"} {
-        if {! [winfo exists $w]} {
-            button $w -text "Undo" -image ::img::undo -compound top -command ::Undo::UndoMove
-            grid $w {*}$config
-        }
-    } else {
-        destroy $w
-    }
 }
 proc IsCutThroat {} {
     return [expr {$::BRD(play,mode) eq "CUTTHROAT"}]
@@ -1305,9 +1324,10 @@ namespace eval ::Settings {
     set MODE(mode) FREE_PLAY
     set MODE(mode) CUTTHROAT
     set MODE(lives) 3
+    set MODE(autoforce) 1
 
     array set HINT_DESCRIPTIONS {
-        partial "Partial slice sums"
+        partial "Excess slice sums"
         coloring "Slice coloring"
         health "Health indicator"
         sets "Hint: valid combinations"
@@ -1316,6 +1336,7 @@ namespace eval ::Settings {
 
     set BOARD_SIZES(all) {"2 squares" "3 squares" "4 squares" "5 squares" \
                               "6 squares" "7 squares" "8 squares" "9 squares"}
+
     "proc" AllOnOff {who how} {
         variable BOARD_SIZES
         variable HINTS
@@ -1398,14 +1419,17 @@ proc ::Settings::Settings {} {
     ::ttk::label $WMODE.title -text "Play Mode" -font $::B(font,settings,heading)
     grid $WMODE.title
 
+    ::ttk::checkbutton $WMODE.auto -text "Auto Force" -variable ::Settings::MODE(autoforce)
+
     ::ttk::radiobutton $WMODE.free -text "Free Play" -variable ::Settings::MODE(mode) -value "FREE_PLAY"
     ::ttk::radiobutton $WMODE.cut -text "Challenge" -variable ::Settings::MODE(mode) -value "CUTTHROAT"
     ::ttk::label $WMODE.lman -text "Number of lives"
     tk_optionMenu $WMODE.men ::Settings::MODE(lives) 1 2 3 4 5 6 7 8 9 $::INFINITY
-    $WMODE.men config -width 10
+    $WMODE.men config -width 7
 
     ::ttk::button $WMODE.restart -text "Restart" -command Restart
 
+    grid $WMODE.auto -sticky w -padx {.2i 0} -pady {0 .2i}
     grid $WMODE.free -sticky w -padx {.2i 0}
     grid $WMODE.cut -sticky w -padx {.2i 0}
     grid $WMODE.lman -sticky w -padx {.2i 0} -pady {.1i 0}
@@ -1478,15 +1502,21 @@ proc ::Settings::Settings {} {
 proc ::Settings::GetBoardSize {{sizeOverride ?}} {
     variable BOARD_SIZES
 
-    if {$sizeOverride ne "?"} {return [expr {max(2, min(9, $sizeOverride))}]}
-
+    if {$sizeOverride ne "?"} {
+        if {$sizeOverride eq "9+"} {
+            return [list 9 True]
+        }
+        set sizeOverride [expr {max(2, min(9, $sizeOverride))}]
+        return [list $sizeOverride False]
+    }
+    set numChoices [llength [array names BOARD_SIZES *sq*]]
     set choices [lmap {k v} [array get BOARD_SIZES *sq*] { if {! $v} continue ; lindex $k 0}]
-    if {[llength $choices] == 0 || [llength $choices] == 8} {
+    if {[llength $choices] == 0 || [llength $choices] == $numChoices} {
         set size [RandomTriangular 2 10 7]
     } else {
         set size [lpick $choices]
     }
-    return $size
+    return [list $size False]
 }
 proc ::Settings::ShowSolution {forced} {
     variable solutionFrame
@@ -1641,7 +1671,7 @@ proc Pause {milliseconds} {
     after $milliseconds [list destroy $w]
     tkwait window $w
 }
-namespace eval Explode {
+namespace eval ::Explode {
     variable AIDS
     variable STATIC
     set STATIC(explode,delay) 50

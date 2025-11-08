@@ -17,19 +17,35 @@ namespace eval NewBoard {
     variable seed
 }
 
-proc ::NewBoard::Create {size bias seed} {
+proc ::NewBoard::Create {size bias seed extraHard} {
     variable newBoard
     global createAttempts
 
+    if {$extraHard && $size < 9} { set extraHard False }
+    set threshold 8
+
+    set best -1
+    set bestSeed ?
+
     for {set createAttempts 1} {$createAttempts <= 100} {incr createAttempts} {
         ::NewBoard::_Create $size $bias $seed
+
         ::NewBoard::_ConvertToBrdFormat TBRD
-        if {[::Solve::IsSolvable TBRD]} {
-            # puts "found solvable puzzle: number of attempts $createAttempts"
-            return
-        }
+        set isSolvable [::Solve::IsSolvable TBRD]
+
+        if {! $isSolvable} continue
+        if {! $extraHard} return
+        if {$extraHard && $isSolvable >= $threshold} return
+        if {$isSolvable > $best} { set best $isSolvable ; set bestSeed $::NewBoard::seed }
     }
-    tk_messageBox -icon warning -message "This puzzle may require guessing"
+    if {$best > -1} {
+        ::NewBoard::_Create $size $bias $seed
+        # Need this for ::Solve::GetSolution to be correct
+        ::NewBoard::_ConvertToBrdFormat TBRD
+        set isSolvable [::Solve::IsSolvable TBRD]
+    } else {
+        tk_messageBox -icon warning -message "This puzzle may require guessing"
+    }
 }
 
 proc ::NewBoard::GetBoard {} {
