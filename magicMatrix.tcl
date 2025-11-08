@@ -375,15 +375,16 @@ proc KPVBlob {action {row ?} {col ?}} {
     #   % KPVBlob data -> data for the board
     #   manually fill in the blob targets
     global BRD
-    global kpvBlobId kpvBlobCells kpvBlobTarget
+    global kpvBlobId kpvBlobCells kpvBlobTargets
 
     if {$action eq "init"} {
         destroy .blob
-        entry .blob -font $::B(font,grid) -width 2 -relief solid -textvariable kpvBlobTarget -justify c
+        entry .blob -font $::B(font,grid) -width 2 -relief solid -justify c
         place .blob -x 50 -y 50 -anchor nw
 
         set kpvBlobId -1
         array unset kpvBlobCells
+        array unset kpvBlobTargets
         foreach row $BRD(indices) {
             set kpvBlobCells($row) {}
             foreach col $BRD(indices) {
@@ -401,8 +402,12 @@ proc KPVBlob {action {row ?} {col ?}} {
     if {$action eq "next"} {
         incr kpvBlobId
         if {$kpvBlobId < $BRD(size)} {
-            set kpvBlobTarget $kpvBlobId
+            set kpvBlobTargets($kpvBlobId) $kpvBlobId
+            if {$BRD(solvable)} {
+                set kpvBlobTargets($kpvBlobId) 0
+            }
             .blob config -bg [lindex $::COLOR(blobs) $kpvBlobId]
+            .blob config -textvariable kpvBlobTargets($kpvBlobId)
         } else {
             set data [KPVBlob data]
             clipboard clear ; clipboard append $data
@@ -417,35 +422,33 @@ proc KPVBlob {action {row ?} {col ?}} {
 
         foreach id $BRD(indices) {
             if {$kpvBlobCells($id) eq {}} continue
-            set target 0
-            foreach cell $kpvBlobCells($id) {
-                lassign $cell row col
-                if {"$row,$col" in [::NewBoard::GetSolution]} {
-                    incr target [lindex $::BRD($row,$col) 0]
-                }
-            }
-            if {$target == 0 && $BRD(solvable)} {
-                puts "KPV: ERROR: blob $id has no selected cells"
-            }
             set cells [lsort $kpvBlobCells($id)]
-            set line "blob $target $cells\n"
+            set line "blob $kpvBlobTargets($id) $cells\n"
             append result $line
         }
         destroy .blob
         return $result
     }
-    set cell [list $row $col]
-    if {$cell in $kpvBlobCells($kpvBlobId)} {
-        puts "KPV: duplicate cell $cell"
+    if {$action eq "add"} {
+        set cell [list $row $col]
+        if {$cell in $kpvBlobCells($kpvBlobId)} {
+            puts "KPV: duplicate cell $cell"
+            return
+        }
+        lappend kpvBlobCells($kpvBlobId) [list $row $col]
+        if {"$row,$col" in [::NewBoard::GetSolution]} {
+            incr kpvBlobTargets($kpvBlobId) [lindex $BRD($row,$col) 0]
+        }
+
+        set tagBg bg_${row}_$col
+        .c itemconfig $tagBg -fill [lindex $::COLOR(blobs) $kpvBlobId]
+        if {[llength $kpvBlobCells($kpvBlobId)] == $::BRD(size)} {
+            puts "KPV: blob is full-sized -- moving to next"
+            KPVBlob next
+        }
         return
     }
-    lappend kpvBlobCells($kpvBlobId) [list $row $col]
-    set tagBg bg_${row}_$col
-    .c itemconfig $tagBg -fill [lindex $::COLOR(blobs) $kpvBlobId]
-    if {[llength $kpvBlobCells($kpvBlobId)] == $::BRD(size)} {
-        puts "KPV: blob is full-sized -- moving to next"
-        KPVBlob next
-    }
+    error "unknown KPVBlob action: '$action'"
 }
 namespace eval ::Cutthroat { }
 proc ::Cutthroat::Display {{clear 0}} {
