@@ -95,7 +95,8 @@ set COLOR(game,over) gray75
 set COLOR(target,highlight) yellow
 set COLOR(target,highlight,blob) magenta
 set COLOR(blobs) {gold cyan orange green pink sienna1 yellow red blue springgreen}
-set COLOR(blobs) {#d95d4c #5a9ee0 #bce5d0 #d54782 #936bf3 #9bbc20 #ca7a18 #e68e7b #6e82e7 #f42ad7 #7316f2 #49cadb}
+set COLOR(blobs) {#d95d4c #5a9ee0 #bce5d0 #d54782 #936bf3 #9bbc20 #ca7a18 #e68e7b
+    #6e82e7 #f42ad7 #7316f2 #49cadb}
 
 set BRD(active) 0
 set BRD(move,count) 0
@@ -810,13 +811,12 @@ proc roundRect { w x0 y0 x3 y3 radius args } {
 proc FillInBlobs {} {
     global BB BRD
 
-    set colors $::COLOR(blobs)
     foreach line $BB {
         if {! [string match blob* $line]} continue
         set cells [lassign $line _ id target]
         set BRD(blob,$id) $target
         set BRD(blob,$id,cells) $cells
-        set BRD(blob,$id,color) [lindex $colors $id]
+        set BRD(blob,$id,color) [lindex $::COLOR(blobs) $id]
         set BRD(blob,$id,active) 1
     }
     set BRD(hasBlobs) [info exists BRD(blob,0)]
@@ -1112,6 +1112,7 @@ proc StartGame {{sizeOverride ?} {seed ?} {fname ?}} {
             set n [tk_messageBox -icon warning -type yesno \
                        -message "Cannot find a solution to this puzzle\n\nPlay anyway?"]
             if {$n eq "no"} return
+            set ::Settings::MODE(mode) FREE_PLAY
         }
     } else {
         lassign [::Settings::GetBoardSize $sizeOverride] size extraHard
@@ -1133,8 +1134,12 @@ proc Restart {} {
     FillInBoard $size
     FillInBlobs
     ColorizeBlobs
-    foreach whichSlice $BRD(indices) {
-        UpdateTargetCellColor $whichSlice $whichSlice
+    foreach idx $BRD(indices) {
+        UpdateTargetCellColor $idx $idx
+        if {$BRD(hasBlobs)} {
+            lassign [lindex $BRD(blob,$idx,cells) 0] row col
+            UpdateTargetCellColor $row $col
+        }
     }
 
     set BRD(active) True
@@ -1535,14 +1540,18 @@ proc ::Settings::ShowSolution {forced} {
     ::NewBoard::ShowInFrame $solutionFrame
 }
 proc ::Settings::Apply {} {
-    if {! $::BRD(active)} return
+    global BRD
+
+    if {! $BRD(active)} return
     ShowState
-    foreach whichSlice $::BRD(indices) {
-        UpdateTargetCellColor $whichSlice $whichSlice
-        _ComputeHint row $whichSlice
-        _ComputeHint col $whichSlice
-        if {$::BRD(hasBlobs)} {
-            _ComputeHint blob $whichSlice
+    foreach idx $BRD(indices) {
+        UpdateTargetCellColor $idx $idx
+        _ComputeHint row $idx
+        _ComputeHint col $idx
+        if {$BRD(hasBlobs)} {
+            lassign [lindex $BRD(blob,$idx,cells) 0] row col
+            UpdateTargetCellColor $row $col
+            _ComputeHint blob $idx
         }
     }
 }
