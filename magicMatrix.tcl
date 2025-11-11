@@ -17,6 +17,7 @@ exit
 #  disable undo in cutthroat mode
 #  remove free play???
 #  remove undo button in cutthroat && disable ctrl-Z
+#  put target sum in bottom corner
 #
 #  auto solve
 #  animation
@@ -138,12 +139,14 @@ proc DoIconPhoto {} {
 proc DrawBoard {size} {
     global S B COLOR
     .c delete all
+    .c create rect -1000 -1000 10000 10000 -tag canvas_bg -fill $COLOR(bg)
     SetUpBoardParams $size
 
     # Target buttons
     set radius 10  ;# KPV magic constant
     lassign [GridXY $size $size] _ grid_y1 _ _ _ _
 
+    # Draw the target sums
     for {set whichSlice 0} {$whichSlice < $size} {incr whichSlice} {
         set tagBox sum_row_$whichSlice
         set tagBg bg_row_$whichSlice
@@ -165,9 +168,9 @@ proc DrawBoard {size} {
 
         .c bind $tagBox <Double-Button-1> [list DoForced row $whichSlice]
         .c bind $tagBox <Button-${S(button,right)}> [list ::Hint::Down row $whichSlice False]
-        .c bind $tagBox <Control-Button-${S(button,right)}> [list ::Hint::Down row $whichSlice True]
+        .c bind $tagBox <Button-${S(button,middle)}> [list ::Hint::Down row $whichSlice True]
+        .c bind $tagBox <ButtonRelease-${S(button,middle)}> [list ::Hint::Up row $whichSlice]
         .c bind $tagBox <ButtonRelease-${S(button,right)}> [list ::Hint::Up row $whichSlice]
-        .c bind $tagBox <Button-${S(button,middle)}> ::Hint::DoIt
 
         set tagBox sum_col_$whichSlice
         set tagBg bg_col_$whichSlice
@@ -189,9 +192,9 @@ proc DrawBoard {size} {
 
         .c bind $tagBox <Double-Button-1> [list DoForced col $whichSlice]
         .c bind $tagBox <Button-${S(button,right)}> [list ::Hint::Down col $whichSlice False]
-        .c bind $tagBox <Control-Button-${S(button,right)}> [list ::Hint::Down col $whichSlice True]
+        .c bind $tagBox <Button-${S(button,middle)}> [list ::Hint::Down col $whichSlice True]
+        .c bind $tagBox <ButtonRelease-${S(button,middle)}> [list ::Hint::Up col $whichSlice]
         .c bind $tagBox <ButtonRelease-${S(button,right)}> [list ::Hint::Up col $whichSlice]
-        .c bind $tagBox <Button-${S(button,middle)}> ::Hint::DoIt
     }
 
     # Grid
@@ -282,7 +285,6 @@ namespace eval ::Undo {
     "proc" PushMoves {undoItems} {
         variable undoStack
         if {! $::BRD(active)} return
-        # if {[IsCutThroat]} return
 
         if {$undoItems ne {}} {
             lappend undoStack $undoItems
@@ -337,6 +339,7 @@ proc DoOneForced {sliceType whichSlice} {
         if {[lindex $BRD($row,$col) 1] eq "normal"} {
             lappend undoItems [lindex $BRD($row,$col) 1] $row $col
             MakeMove $action $row $col
+            # KPV PaintBlobRC $row $col
         }
     }
 
@@ -541,8 +544,11 @@ proc ButtonAction {newState row col} {
     if {$::Settings::MODE(autoforce)} {
         DoAllForced
     }
+    PaintBlobRC $row $col
 }
 proc MakeMove {newState row col} {
+    # Transitions cell row,col into newState
+    # NB. no undo info is kept
     global BRD
     if {! $BRD(active)} return
 
@@ -550,10 +556,10 @@ proc MakeMove {newState row col} {
     set oldState [ChangeGridState $row $col $newState]
     if {$oldState eq $newState} return
     ShowGridState $row $col $newState
-    UpdateTargetCellColor $row $col
-    ShowState
+    UpdateSumCellColor $row $col
+    ShowHealthState
 }
-proc ShowState {} {
+proc ShowHealthState {} {
     if {[CheckForVictory]} {
         set ::BRD(active) False
         .c itemconfig state -text $::VICTORY_STATE
@@ -592,7 +598,7 @@ proc CheckForVictory {} {
     return $isDone
 }
 
-proc GetTargetCellState {sliceType whichSlice} {
+proc GetSumCellState {sliceType whichSlice} {
     global BRD
     lassign $BRD($sliceType,$whichSlice,meta) _ _ needed unselectedTotal
 
@@ -603,13 +609,13 @@ proc GetTargetCellState {sliceType whichSlice} {
     if {! [::Hint::IsNullHint $sliceType $whichSlice]} { return "TSTATE_ACTIVE" }
     return "TSTATE_NORMAL"
 }
-proc UpdateTargetCellColor {row col} {
+proc UpdateSumCellColor {row col} {
     global COLOR
 
     foreach sliceType {row col blob} whichSlice [list $row $col [CellToBlob ::BRD $row $col]] {
         if {$sliceType eq "blob" && ! $::BRD(hasBlobs)} break
 
-        set tstate [GetTargetCellState $sliceType $whichSlice]
+        set tstate [GetSumCellState $sliceType $whichSlice]
         set color $COLOR(TSTATE_NORMAL)
         if { $::Settings::HINTS(coloring) || $tstate in {"TSTATE_DONE" "TSTATE_BAD"}} {
             set color $COLOR($tstate)
@@ -617,6 +623,13 @@ proc UpdateTargetCellColor {row col} {
 
         set tagBg bg_${sliceType}_$whichSlice
         .c itemconfig $tagBg -fill $color
+
+        set tag sum_${sliceType}_$whichSlice
+        if {$tstate eq "TSTATE_DONE"} {
+            .c lower $tag canvas_bg
+        } else {
+             .c raise $tag
+        }
     }
 }
 
@@ -666,6 +679,14 @@ proc CellToBlob {_BRD row col} {
         }
     }
     error "cannot find blob for $row,$col"
+}
+proc GetCellBackground {row col} {
+    global BRD COLOR
+    if {! $BRD(hasBlobs)} { return $COLOR(grid) }
+    set blobId [CellToBlob ::BRD $row $col]
+    set state [GetSumCellState blob $blobId]
+    if {$state eq "TSTATE_DONE"} { return $COLOR(grid) }
+    return $BRD(blob,$blobId,color)
 }
 proc SetUpBoardParams {size} {
     global S B
@@ -822,7 +843,7 @@ proc FillInBlobs {} {
     set BRD(hasBlobs) [info exists BRD(blob,0)]
 }
 proc ColorizeBlobs {} {
-    global BRD
+    global BRD S
 
     if {! $BRD(hasBlobs)} return
 
@@ -830,13 +851,22 @@ proc ColorizeBlobs {} {
         lassign [lindex $BRD(blob,$id,cells) 0] row col
         set tagBlob blob_${row}_$col
         set tagBlobText btext_${row}_$col
+        set tagBlobBox sum_blob_$id
         set tagBg bg_blob_$id
         set tagText text_blob_$id
 
         .c itemconfig $tagBlob -fill $::COLOR(grid) -outline black
         .c itemconfig $tagBlobText -text $BRD(blob,$id)
         .c addtag $tagBg withtag $tagBlob
+        .c addtag $tagBlobBox withtag $tagBlob
         .c addtag $tagText withtag $tagBlobText
+        .c addtag $tagBlobBox withtag $tagBlobText
+
+        # .c bind $tagBlobBox <Button-${::S(button,right)}> [list puts "KPV: ::Hint::Down blob $id False"]
+        .c bind $tagBlobBox <Button-${S(button,right)}> [list ::Hint::Down blob $id False]
+        .c bind $tagBlobBox <Button-${S(button,middle)}> [list ::Hint::Down blob $id True]
+        .c bind $tagBlobBox <ButtonRelease-${S(button,middle)}> [list ::Hint::Up blob $id]
+        .c bind $tagBlobBox <ButtonRelease-${S(button,right)}> [list ::Hint::Up blob $id]
 
         foreach cell $BRD(blob,$id,cells) {
             lassign $cell row col
@@ -844,6 +874,24 @@ proc ColorizeBlobs {} {
             .c itemconfig $tagBg -fill $BRD(blob,$id,color)
         }
         _ComputeHint blob $id
+    }
+}
+proc PaintBlobRC {row col} {
+    set blobId [CellToBlob ::BRD $row $col]
+    PaintBlob $blobId
+}
+proc PaintBlob {blobId} {
+    global BRD COLOR
+    if {! $BRD(hasBlobs)} return
+
+    set state [GetSumCellState blob $blobId]
+    set color [expr {$state eq "TSTATE_DONE" ? $COLOR(grid) : $BRD(blob,$blobId,color)}]
+
+    set cells [GetAllCellsForSlice BRD blob $blobId]
+    foreach cell $cells {
+        lassign $cell row col
+        set tag bg_${row}_$col
+        .c itemconfig $tag -fill $color
     }
 }
 proc FillInBoard {size} {
@@ -1135,10 +1183,10 @@ proc Restart {} {
     FillInBlobs
     ColorizeBlobs
     foreach idx $BRD(indices) {
-        UpdateTargetCellColor $idx $idx
+        UpdateSumCellColor $idx $idx
         if {$BRD(hasBlobs)} {
             lassign [lindex $BRD(blob,$idx,cells) 0] row col
-            UpdateTargetCellColor $row $col
+            UpdateSumCellColor $row $col
         }
     }
 
@@ -1152,7 +1200,7 @@ proc Restart {} {
 
     ::Undo::Clear
     .c itemconfig tagVictory -text ""
-    ShowState
+    ShowHealthState
     ::Settings::ShowSolution 0
     ::Cutthroat::Display
 }
@@ -1309,7 +1357,7 @@ proc DoButtons {} {
     bind .buttons.play <$::S(button,right)> Restart
     button .buttons.undo -text "Undo" -image ::img::undo -compound top -command ::Undo::UndoMove
     button .buttons.automove -text "Forced" -image ::img::solve -compound top -command DoAllForced
-    button .buttons.quick -text "Quick Pass" -image ::img::quickpass -compound top -command ::Hint::QuickPass
+    button .buttons.quick -text "First Pass" -image ::img::quickpass -compound top -command ::Hint::QuickPass
     bind .buttons.quick <$::S(button,right)> ::Hint::BestSlice
 
     grid x .buttons.play .buttons.undo .buttons.automove .buttons.quick \
@@ -1543,14 +1591,14 @@ proc ::Settings::Apply {} {
     global BRD
 
     if {! $BRD(active)} return
-    ShowState
+    ShowHealthState
     foreach idx $BRD(indices) {
-        UpdateTargetCellColor $idx $idx
+        UpdateSumCellColor $idx $idx
         _ComputeHint row $idx
         _ComputeHint col $idx
         if {$BRD(hasBlobs)} {
             lassign [lindex $BRD(blob,$idx,cells) 0] row col
-            UpdateTargetCellColor $row $col
+            UpdateSumCellColor $row $col
             _ComputeHint blob $idx
         }
     }
@@ -1640,8 +1688,8 @@ proc Help {} {
     Bullet "Ctrl-q: quick pass removing items larger than their slice target"
 
     T "\n"
-    T "Quick Pass\n" h2
-    T "Quick pass runs through all the slices and kills any item that is greater "
+    T "First Pass\n" h2
+    T "First pass runs through all the slices and kills any item that is greater "
     T "the slice's target.\n"
 
     T "\n"
@@ -1709,7 +1757,8 @@ proc ::Explode::Explode {row col} {
     set coords {}
     set tag explode_${row}_$col
 
-    .c create oval [list $x $y $x $y] -tag $tag -fill white -outline black -width 15
+    set color [GetCellBackground $row $col]
+    .c create oval [list $x $y $x $y] -tag $tag -fill $color -outline black -width 15
     .c raise text_${row}_$col
 
     for {set i 0} {$i < $steps} {incr i} {
@@ -1736,16 +1785,16 @@ proc ::Explode::Implode {row col} {
     global B
     variable STATIC
 
-    set steps [expr {$STATIC(implode,totalTime) / $STATIC(implode,delay)}]
-    set colors {}
-    for {set i 0} {$i < $steps} {incr i} {
-        set n [expr {100 * $i / $steps}]
-        set color "gray$n"
-        lappend colors $color
-    }
-
     set tag bg_${row}_$col
-    set lastColor [.c itemcget $tag -fill]
+    set lastColor [GetCellBackground $row $col]
+    # if {$row == 0 && $col == 0} {
+    #     set state [GetSumCellState blob 0]
+    #     puts "KPV: lastColor: $lastColor state: $state"
+    # }
+
+    set steps [expr {$STATIC(implode,totalTime) / $STATIC(implode,delay)}]
+    set colors [::Explode::Gradient black $lastColor $steps]
+
     set AIDS($tag) [after 10 \
                         [list ::Explode::ImplodeAnim $tag $STATIC(implode,delay) $colors $lastColor]]
 }
@@ -1783,12 +1832,37 @@ proc ::Explode::Stop {{who *} {lastColor ""}} {
             .c delete $tag
             .c raise circle_${row}_$col
             .c raise text_${row}_$col
-            .c raise blob
+            # .c raise blob
         } else {
             .c itemconfig $tag -fill $lastColor
         }
     }
     array unset AIDS $who
+}
+proc ::Explode::Gradient {c1 c2 n} {
+    foreach {r1 g1 b1} [winfo rgb . $c1] break
+    foreach {r2 g2 b2} [winfo rgb . $c2] break
+
+    foreach el {r1 g1 b1 r2 g2 b2} {            ;# Normalize to 0-255 range
+        set $el [expr {[set $el] * 255 / 65535}].0
+    }
+
+    set r_step 0.0 ; set g_step 0.0 ; set b_step 0.0
+    if {$n > 1} {
+        set r_step [expr {($r2-$r1) / ($n-1)}]
+        set g_step [expr {($g2-$g1) / ($n-1)}]
+        set b_step [expr {($b2-$b1) / ($n-1)}]
+    }
+
+    set steps {}
+    for {set i 0} {$i < $n} {incr i} {
+        set r [expr {int($r_step * $i + $r1)}]
+        set g [expr {int($g_step * $i + $g1)}]
+        set b [expr {int($b_step * $i + $b1)}]
+        lappend steps [format "#%.2X%.2X%.2X" $r $g $b]
+    }
+
+    return $steps
 }
 
 ################################################################

@@ -38,11 +38,14 @@ proc ::Hint::Popup {sliceType whichSlice verbose} {
         set x $x1
         set y [expr {$y0 - 10}]
         set anchor se
-    } else {
+    } elseif {$sliceType eq "col"} {
         set x [expr {$x0 - 10}]
         set y $y1
         set anchor se
-
+    } elseif {$sliceType eq "blob"} {
+        set x $x1
+        set y [expr {$y0 - 10}]
+        set anchor se
     }
 
     .c delete hintPopup
@@ -70,17 +73,16 @@ proc ::Hint::DoIt {} {
     ::Hint::_Doit $sliceType $whichSlice
 }
 proc ::Hint::_Doit {sliceType whichSlice} {
-    set idx -1
-    foreach key $::BRD($sliceType,$whichSlice,hint) {
-        incr idx
+    global BRD
+
+    set hints $BRD($sliceType,$whichSlice,hint)
+    set cells [GetAllCellsForSlice BRD $sliceType $whichSlice]
+    foreach key $hints cell $cells {
         if {$key eq $::MIDDLE_DOT} continue
         lassign [split $key ""] digit backspace
         set action [expr {$backspace eq "" ? "select" : "kill"}]
-        if {$sliceType eq "row"} {
-            MakeMove $action $whichSlice $idx
-        } else {
-            MakeMove $action $idx $whichSlice
-        }
+        lassign $cell row col
+        MakeMove $action $row $col
     }
     ::Hint::Up $sliceType $whichSlice
 }
