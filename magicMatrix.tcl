@@ -8,6 +8,16 @@ exit
 # Magic Matrix.tcl -- plays a numbers in a matrix selection game
 # by Keith Vetter 2025-08-19
 #
+# BUG:
+#   StartGame ? ? color_small.txt
+#   First Pass
+#   Forced
+
+#   StartGame ? ? color_small.txt
+#   turn off Auto Force
+#   kill 0,0 & column 1 except the 2
+#   DoForce on column 2
+#
 # TODO:
 #  mode with punishes guesses -- bark if not forced
 #  check starting size w/ screensize
@@ -101,6 +111,7 @@ set COLOR(blobs) {#d95d4c #5a9ee0 #bce5d0 #d54782 #936bf3 #9bbc20 #ca7a18 #e68e7
 
 set BRD(active) 0
 set BRD(move,count) 0
+set BRD(hasBlobs) False
 
 proc DoDisplay {} {
     global S COLOR
@@ -326,20 +337,21 @@ proc DoForced {sliceType whichSlice} {
 }
 proc DoOneForced {sliceType whichSlice} {
     global BRD
-    if {! $BRD(active)} return
 
     set undoItems {}
+    if {! $BRD(active)} { return $undoItems}
+
     lassign $BRD($sliceType,$whichSlice,meta) target selectedTotal needed unselectedTotal
     if {$needed != 0 && $needed != $unselectedTotal} { return $undoItems}
 
-    set action [expr {$needed == 0 ? "kill" : "select"}]
+    set newState [expr {$needed == 0 ? "kill" : "select"}]
 
     foreach i $BRD(indices) {
-        lassign [GetKeyForSliceIndex BRD $sliceType $whichSlice $i] row col
+        lassign [GetNthCellInSlice BRD $sliceType $whichSlice $i] row col
         if {[lindex $BRD($row,$col) 1] eq "normal"} {
             lappend undoItems [lindex $BRD($row,$col) 1] $row $col
-            MakeMove $action $row $col
-            # KPV PaintBlobRC $row $col
+            MakeMove $newState $row $col
+            PaintBlobRC $row $col
         }
     }
 
@@ -553,11 +565,69 @@ proc MakeMove {newState row col} {
     if {! $BRD(active)} return
 
     incr BRD(move,count)
-    set oldState [ChangeGridState $row $col $newState]
+    set oldState [UpdateBoard $newState $row $col]
     if {$oldState eq $newState} return
-    ShowGridState $row $col $newState
-    UpdateSumCellColor $row $col
+    UpdateCellDisplay $newState $row $col
+    UpdateSumDisplay $row $col
     ShowHealthState
+}
+proc UpdateBoard {newState row col} {
+    # Updates the row/col/blob totals, and returns the old cell state
+    global BRD
+
+    set oldState [lindex $BRD($row,$col) 1]
+    lset BRD($row,$col) 1 $newState
+
+    _ComputeHint row $row
+    _ComputeHint col $col
+    if {$BRD(hasBlobs)} {
+        set blobId [CellToBlob BRD $row $col]
+        _ComputeHint blob $blobId
+    }
+
+    return $oldState
+}
+proc UpdateSumDisplay {row col} {
+    global COLOR
+
+    foreach sliceType {row col blob} whichSlice [list $row $col [CellToBlob ::BRD $row $col]] {
+        if {$sliceType eq "blob" && ! $::BRD(hasBlobs)} break
+
+        set tstate [GetSumCellState $sliceType $whichSlice]
+        set color $COLOR(TSTATE_NORMAL)
+        if { $::Settings::HINTS(coloring) || $tstate in {"TSTATE_DONE" "TSTATE_BAD"}} {
+            set color $COLOR($tstate)
+        }
+
+        set tagBg bg_${sliceType}_$whichSlice
+        .c itemconfig $tagBg -fill $color
+
+        set tag sum_${sliceType}_$whichSlice
+        if {$tstate eq "TSTATE_DONE"} {
+            .c lower $tag canvas_bg
+        } else {
+             .c raise $tag
+        }
+    }
+}
+
+proc UpdateCellDisplay {newState row col} {
+    .c lower cross_${row}_$col
+    .c lower circle_${row}_$col
+    .c lower small_${row}_$col
+    .c raise text_${row}_$col
+
+    if {$newState eq "kill"} {
+        .c lower text_${row}_$col
+        .c raise small_${row}_$col
+        ::Explode::Implode $row $col
+    } elseif {$newState eq "select"} {
+        ::Explode::Explode $row $col
+    } elseif {$newState eq "normal"} {
+        .c raise text_${row}_$col
+        .c lower small_${row}_$col
+        ::Explode::Implode $row $col
+    }
 }
 proc ShowHealthState {} {
     if {[CheckForVictory]} {
@@ -608,64 +678,6 @@ proc GetSumCellState {sliceType whichSlice} {
     if {$needed == $unselectedTotal} { return "TSTATE_EXCESS_IS_0" }
     if {! [::Hint::IsNullHint $sliceType $whichSlice]} { return "TSTATE_ACTIVE" }
     return "TSTATE_NORMAL"
-}
-proc UpdateSumCellColor {row col} {
-    global COLOR
-
-    foreach sliceType {row col blob} whichSlice [list $row $col [CellToBlob ::BRD $row $col]] {
-        if {$sliceType eq "blob" && ! $::BRD(hasBlobs)} break
-
-        set tstate [GetSumCellState $sliceType $whichSlice]
-        set color $COLOR(TSTATE_NORMAL)
-        if { $::Settings::HINTS(coloring) || $tstate in {"TSTATE_DONE" "TSTATE_BAD"}} {
-            set color $COLOR($tstate)
-        }
-
-        set tagBg bg_${sliceType}_$whichSlice
-        .c itemconfig $tagBg -fill $color
-
-        set tag sum_${sliceType}_$whichSlice
-        if {$tstate eq "TSTATE_DONE"} {
-            .c lower $tag canvas_bg
-        } else {
-             .c raise $tag
-        }
-    }
-}
-
-proc ShowGridState {row col newState} {
-    .c lower cross_${row}_$col
-    .c lower circle_${row}_$col
-    .c lower small_${row}_$col
-    .c raise text_${row}_$col
-
-    if {$newState eq "kill"} {
-        .c lower text_${row}_$col
-        .c raise small_${row}_$col
-        ::Explode::Implode $row $col
-    } elseif {$newState eq "select"} {
-        ::Explode::Explode $row $col
-    } elseif {$newState eq "normal"} {
-        .c raise text_${row}_$col
-        .c lower small_${row}_$col
-        ::Explode::Implode $row $col
-    }
-
-}
-proc ChangeGridState {row col newState} {
-    global BRD
-
-    set oldState [lindex $BRD($row,$col) 1]
-    lset BRD($row,$col) 1 $newState
-
-    _ComputeHint row $row
-    _ComputeHint col $col
-    if {$BRD(hasBlobs)} {
-        set blobId [CellToBlob BRD $row $col]
-        _ComputeHint blob $blobId
-    }
-
-    return $oldState
 }
 proc CellToBlob {_BRD row col} {
     upvar 1 $_BRD BRD
@@ -944,19 +956,10 @@ proc GetAllCellsForSlice {_BRD sliceType whichSlice} {
     }
     return $cells
 }
-proc GetKeyForSliceIndex {_BRD sliceType whichSlice index} {
+proc GetNthCellInSlice {_BRD sliceType whichSlice index} {
     upvar 1 $_BRD BRD
     set cells [GetAllCellsForSlice BRD $sliceType $whichSlice]
     return [lindex $cells $index]
-
-    if {$sliceType eq "row"} {
-        set key [list $whichSlice $index]
-    } elseif {$sliceType eq "col"} {
-        set key [list $index $whichSlice]
-    } else {
-        set key [lindex $BRD(blob,$whichSlice,cells) $index]
-    }
-    return $key
 }
 proc GetSliceSums {_BRD sliceType whichSlice} {
     upvar 1 $_BRD BRD
@@ -1183,10 +1186,10 @@ proc Restart {} {
     FillInBlobs
     ColorizeBlobs
     foreach idx $BRD(indices) {
-        UpdateSumCellColor $idx $idx
+        UpdateSumDisplay $idx $idx
         if {$BRD(hasBlobs)} {
             lassign [lindex $BRD(blob,$idx,cells) 0] row col
-            UpdateSumCellColor $row $col
+            UpdateSumDisplay $row $col
         }
     }
 
@@ -1593,12 +1596,12 @@ proc ::Settings::Apply {} {
     if {! $BRD(active)} return
     ShowHealthState
     foreach idx $BRD(indices) {
-        UpdateSumCellColor $idx $idx
+        UpdateSumDisplay $idx $idx
         _ComputeHint row $idx
         _ComputeHint col $idx
         if {$BRD(hasBlobs)} {
             lassign [lindex $BRD(blob,$idx,cells) 0] row col
-            UpdateSumCellColor $row $col
+            UpdateSumDisplay $row $col
             _ComputeHint blob $idx
         }
     }
@@ -1787,16 +1790,12 @@ proc ::Explode::Implode {row col} {
 
     set tag bg_${row}_$col
     set lastColor [GetCellBackground $row $col]
-    # if {$row == 0 && $col == 0} {
-    #     set state [GetSumCellState blob 0]
-    #     puts "KPV: lastColor: $lastColor state: $state"
-    # }
 
     set steps [expr {$STATIC(implode,totalTime) / $STATIC(implode,delay)}]
     set colors [::Explode::Gradient black $lastColor $steps]
 
     set AIDS($tag) [after 10 \
-                        [list ::Explode::ImplodeAnim $tag $STATIC(implode,delay) $colors $lastColor]]
+                        [list ::Explode::ImplodeAnim $tag $STATIC(implode,delay) $colors]]
 }
 proc ::Explode::Burst {tag} {
     global B
@@ -1808,21 +1807,22 @@ proc ::Explode::Burst {tag} {
         lappend colors "red" "white"
     }
     set lastColor [.c itemcget $tag -fill]
+    set lastColor [list $row $col]
     set AIDS($tag) [after 10 \
-                        [list ::Explode::ImplodeAnim $tag $STATIC(burst,delay) $colors $lastColor]]
+                        [list ::Explode::ImplodeAnim $tag $STATIC(burst,delay) $colors]]
 }
-proc ::Explode::ImplodeAnim {tag delay colors lastColor} {
+proc ::Explode::ImplodeAnim {tag delay colors} {
     variable AIDS
 
     if {! $::Settings::HINTS(explode) || $colors eq {}} {
-        ::Explode::Stop $tag $lastColor
+        ::Explode::Stop $tag
         return
     }
     set newColors [lassign $colors color]
     .c itemconfig $tag -fill $color
-    set AIDS($tag) [after $delay [list ::Explode::ImplodeAnim $tag $delay $newColors $lastColor]]
+    set AIDS($tag) [after $delay [list ::Explode::ImplodeAnim $tag $delay $newColors]]
 }
-proc ::Explode::Stop {{who *} {lastColor ""}} {
+proc ::Explode::Stop {{who *}} {
     variable AIDS
 
     foreach {tag aid} [array get AIDS $who] {
@@ -1832,9 +1832,10 @@ proc ::Explode::Stop {{who *} {lastColor ""}} {
             .c delete $tag
             .c raise circle_${row}_$col
             .c raise text_${row}_$col
-            # .c raise blob
         } else {
-            .c itemconfig $tag -fill $lastColor
+            lassign [split $tag "_"] _ row col
+            set color [GetCellBackground $row $col]
+            .c itemconfig $tag -fill $color
         }
     }
     array unset AIDS $who
