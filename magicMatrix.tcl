@@ -51,9 +51,12 @@ source victory.tcl
 source hints.tcl
 source newBoard.tsh
 source solve.tsh
+if {[file exists kpv.tcl]} {
+    source kpv.tcl
+}
 
 set S(title) "Magic Matrix"
-set S(version) "1.2"
+set S(version) "1.3"
 
 set S(canvas,width) 800
 set S(canvas,height) 800
@@ -384,88 +387,6 @@ proc DoAllForced {} {
     ::Undo::PushMoves $allUndoItems
     return [llength $whoIsForced]
 }
-proc KPVBlob {action {row ?} {col ?}} {
-    # Manual way to create blobs for an existing board
-    #   % KPVBlob init
-    #   left click to form blobs (it will detect when to start new blob)
-    #   % KPVBlob data -> data for the board
-    #   manually fill in the blob targets
-    global BRD
-    global kpvBlobId kpvBlobCells kpvBlobTargets
-
-    if {$action eq "init"} {
-        destroy .blob
-        entry .blob -font $::B(font,grid) -width 2 -relief solid -justify c
-        place .blob -x 50 -y 50 -anchor nw
-
-        set kpvBlobId -1
-        array unset kpvBlobCells
-        array unset kpvBlobTargets
-        foreach row $BRD(indices) {
-            set kpvBlobCells($row) {}
-            foreach col $BRD(indices) {
-                set tagBox grid_${row}_$col
-                .c bind $tagBox <ButtonRelease-1> \
-                    [list KPVBlob "add" $row $col]
-                if {"$row,$col" in [::NewBoard::GetSolution]} {
-                    ::Explode::Explode $row $col
-                }
-            }
-        }
-        KPVBlob next
-        return
-    }
-    if {$action eq "next"} {
-        incr kpvBlobId
-        if {$kpvBlobId < $BRD(size)} {
-            set kpvBlobTargets($kpvBlobId) $kpvBlobId
-            if {$BRD(solvable)} {
-                set kpvBlobTargets($kpvBlobId) 0
-            }
-            .blob config -bg [lindex $::COLOR(blobs) $kpvBlobId]
-            .blob config -textvariable kpvBlobTargets($kpvBlobId)
-        } else {
-            set data [KPVBlob data]
-            clipboard clear ; clipboard append $data
-            puts $data
-            puts "KPV: complete board -- data copied to the clipboard"
-        }
-        return
-    }
-    if {$action eq "data"} {
-        set result [join $::BB "\n"]
-        append result "\n\n"
-
-        foreach id $BRD(indices) {
-            if {$kpvBlobCells($id) eq {}} continue
-            set cells [lsort $kpvBlobCells($id)]
-            set line "blob $kpvBlobTargets($id) $cells\n"
-            append result $line
-        }
-        destroy .blob
-        return $result
-    }
-    if {$action eq "add"} {
-        set cell [list $row $col]
-        if {$cell in $kpvBlobCells($kpvBlobId)} {
-            puts "KPV: duplicate cell $cell"
-            return
-        }
-        lappend kpvBlobCells($kpvBlobId) [list $row $col]
-        if {"$row,$col" in [::NewBoard::GetSolution]} {
-            incr kpvBlobTargets($kpvBlobId) [lindex $BRD($row,$col) 0]
-        }
-
-        set tagBg bg_${row}_$col
-        .c itemconfig $tagBg -fill [lindex $::COLOR(blobs) $kpvBlobId]
-        if {[llength $kpvBlobCells($kpvBlobId)] == $::BRD(size)} {
-            puts "KPV: blob is full-sized -- moving to next"
-            KPVBlob next
-        }
-        return
-    }
-    error "unknown KPVBlob action: '$action'"
-}
 namespace eval ::Cutthroat { }
 proc ::Cutthroat::Display {{clear 0}} {
     global BRD
@@ -542,7 +463,6 @@ proc ButtonAction {newState row col} {
     set okMove [::Cutthroat::CheckMove $newState $row $col]
     if {! $okMove} {
         ::Explode::Burst bg_${row}_$col
-        ::Explode::Burst cutthroat
 
         if {$BRD(lives,remaining) <= 0} {
             update
@@ -1160,7 +1080,7 @@ proc StartGame {{sizeOverride ?} {seed ?} {fname ?}} {
     if {$fname ne "?"} {
         set n [::NewBoard::FromFile $fname]
         if {! $n} {
-            set n [tk_messageBox -icon warning -type yesno \
+            set n [tk_messageBox -icon warning -type yesno -parent .  \
                        -message "Cannot find a solution to this puzzle\n\nPlay anyway?"]
             if {$n eq "no"} return
             set ::Settings::MODE(mode) FREE_PLAY
@@ -1806,8 +1726,6 @@ proc ::Explode::Burst {tag} {
     for {set i 0} {$i < $steps} {incr i 2} {
         lappend colors "red" "white"
     }
-    set lastColor [.c itemcget $tag -fill]
-    set lastColor [list $row $col]
     set AIDS($tag) [after 10 \
                         [list ::Explode::ImplodeAnim $tag $STATIC(burst,delay) $colors]]
 }
