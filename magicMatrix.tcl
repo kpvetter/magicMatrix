@@ -8,15 +8,6 @@ exit
 # Magic Matrix.tcl -- plays a numbers in a matrix selection game
 # by Keith Vetter 2025-08-19
 #
-# BUG:
-#   StartGame ? ? color_small.txt
-#   First Pass
-#   Forced
-
-#   StartGame ? ? color_small.txt
-#   turn off Auto Force
-#   kill 0,0 & column 1 except the 2
-#   DoForce on column 2
 #
 # TODO:
 #  mode with punishes guesses -- bark if not forced
@@ -28,6 +19,8 @@ exit
 #  remove free play???
 #  remove undo button in cutthroat && disable ctrl-Z
 #  put target sum in bottom corner
+#  hints on blobs don't show deleted unicode character
+#  select circles sometimes are above blob sum
 #
 #  auto solve
 #  animation
