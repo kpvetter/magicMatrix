@@ -1091,7 +1091,8 @@ proc StartGame {{sizeOverride ?} {seed ?} {fname ?}} {
 proc Restart {} {
     global BRD BB
 
-    # TODO: remove BB as global variable
+    ::Victory::Stop all
+    ::Explode::Stop
 
     set size [expr {[llength [lindex $BB 0]] - 1}]
     DrawBoard $size
@@ -1793,6 +1794,10 @@ if {0} {
 
     set size 9
     set seed 4012667637
+    StartGame $size $seed
+
+    set size 7
+    set seed 2767297063
     StartGame $size $seed
 }
 proc blob {{fname puzzles/color_1.txt}} {

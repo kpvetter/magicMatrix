@@ -74,7 +74,6 @@ proc ::Victory::Sparkle {tags} {
     incr config(counter)
 
     foreach tag $tags {
-        # set color [::Victory::RandomColor $tag]
         set color [::Victory::GetColor $tag]
         .c itemconfig $tag -fill $color
     }

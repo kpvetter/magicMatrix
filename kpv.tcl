@@ -21,7 +21,7 @@ namespace eval ::KPV {
     variable KBRD
 
     variable KTOP .kpv
-    variable blobId
+    variable currentBlob
     variable blobSelected {}
     variable messages ""
 
@@ -48,7 +48,7 @@ proc ::KPV::Layout {{size ?}} {
     set gcol 1
     foreach col $KBRD(indices) {
         set w $KTOP.col,$col
-        entry $w -textvariable ::KPV::KBRD(col,$col) -width 2 -justify c -bd 4 -relief flat
+        entry $w -textvariable ::KPV::KBRD(col,$col) -width 2 -justify c -bd 4 -relief flat -exportselection 0
         # bind $w <Key-space> [list event generate $w <<NextWindow>> ]
         bindtags $w [list Entry $w all]
         bind $w <Key> [list ::KPV::KeyBinding $w col $col %K]
@@ -61,7 +61,7 @@ proc ::KPV::Layout {{size ?}} {
         incr grow
         set gcol 0
         set w $KTOP.row,$row
-        entry $w -textvariable ::KPV::KBRD(row,$row) -width 2 -justify c -bd 4 -relief flat
+        entry $w -textvariable ::KPV::KBRD(row,$row) -width 2 -justify c -bd 4 -relief flat -exportselection 0
         grid $w -row $grow -column $gcol -padx {0 .1i}
 
         bindtags $w [list Entry $w all]
@@ -70,13 +70,9 @@ proc ::KPV::Layout {{size ?}} {
         foreach col $KBRD(indices) {
             incr gcol
             set w $KTOP.$row,$col
-            entry $w -textvariable ::KPV::KBRD($row,$col) -width 2 -justify c -bd 4 -relief flat
+            entry $w -textvariable ::KPV::KBRD($row,$col) -width 2 -justify c -bd 4 -relief flat -exportselection 0
             grid $w -row $grow -column $gcol
 
-            # bindtags $w [list Entry $w all]
-            # foreach digit {1 2 3 4 5 6 7 8 9} {
-            #     bind $w $digit [list event generate $w <<NextWindow>>]
-            # }
             bindtags $w [list Entry $w all]
             bind $w <Key> [list ::KPV::KeyBinding $w $row $col %K]
         }
@@ -88,7 +84,7 @@ proc ::KPV::Layout {{size ?}} {
     grid $KTOP.blobsums.m1 -columnspan $size -sticky ew -row 101
     foreach id $KBRD(indices) {
         set w $KTOP.blobsums.bs$id
-        entry $w -textvariable ::KPV::KBRD(blob,$id) -width 2 -justify c
+        entry $w -textvariable ::KPV::KBRD(blob,$id) -width 2 -justify c -exportselection 0
         grid $w -row 102 -column $id
     }
 
@@ -208,13 +204,13 @@ proc ::KPV::GetBoard {} {
 proc ::KPV::Blob {size} {
     variable KBRD
     variable KTOP
-    variable blobId
+    variable currentBlob
     variable blobSelected
 
     ::KPV::Layout $size
 
-    set blobId 0
-    ::KPV::ShowCurrentBlob
+    set currentBlob 0
+    ::KPV::ChangeCurrentBlob $currentBlob
 
     array unset KBRD blob,*,cells
     set blobSelected {}
@@ -224,8 +220,9 @@ proc ::KPV::Blob {size} {
         set KBRD(blob,$row,cells) {}
         foreach col $KBRD(indices) {
             set w $KTOP.$row,$col
-            bind $w <ButtonRelease-1> [list ::KPV::MouseDownBlob $row $col]
-            bind $w <ButtonRelease-$::S(button,right)> [list ::KPV::MouseDownSelect $w $row $col]
+            bind $w <Shift-Button-1> [list ::KPV::MouseDownBlob $row $col]
+            bind $w <Shift-Button-$::S(button,right)> [list ::KPV::MouseDownUnBlob $row $col]
+            # bind $w <Shift-Button-$::S(button,right)> [list ::KPV::MouseDownSelect $w $row $col]
         }
     }
 }
@@ -242,52 +239,75 @@ proc ::KPV::MouseDownSelect {w row col} {
         $w config -relief flat
     }
 }
+proc ::KPV::MouseDownUnBlob {row col} {
+    variable KBRD
+    variable KTOP
+    variable messages
+
+    set cell [list $row $col]
+
+    foreach whichBlob $KBRD(indices) {
+        set n [lsearch -exact $KBRD(blob,$whichBlob,cells) $cell]
+        if {$n == -1} continue
+
+        set messages "removing cell $row,$col from blob #$whichBlob"
+        set KBRD(blob,$whichBlob,cells) [lreplace $KBRD(blob,$whichBlob,cells) $n $n]
+        set w $KTOP.$row,$col
+        set bg [lindex [$w config -bg] 3]
+        $w config -bg $bg
+        return
+    }
+}
 proc ::KPV::MouseDownBlob {row col} {
     variable KBRD
     variable KTOP
-    variable blobId
+    variable currentBlob
     variable messages
 
-    if {$blobId >= $KBRD(size)} {
+    if {$currentBlob >= $KBRD(size)} {
         set messages "blobs full"
         return
     }
+    if {[llength $KBRD(blob,$currentBlob,cells)] == $KBRD(size)} {
+        set message "current blob is already full"
+        return
+    }
+
 
     set w $KTOP.$row,$col
     set cell [list $row $col]
-    if {$cell in $KBRD(blob,$blobId,cells)} {
+    if {$cell in $KBRD(blob,$currentBlob,cells)} {
         set messages "duplicate cell $cell\nignoring"
         return
     }
-    lappend KBRD(blob,$blobId,cells) $cell
-    set color [lindex $::COLOR(blobs) $blobId]
+    lappend KBRD(blob,$currentBlob,cells) $cell
+    set color [lindex $::COLOR(blobs) $currentBlob]
     $w config -bg $color
 
-    if {[llength $KBRD(blob,$blobId,cells)] < $KBRD(size)} return
+    if {[llength $KBRD(blob,$currentBlob,cells)] < $KBRD(size)} return
     set messages "blob is full-sized\nmoving to next"
 
-    incr blobId
-    ::KPV::ShowCurrentBlob
-
-    if {$blobId >= $KBRD(size)} {
+    incr currentBlob
+    if {$currentBlob >= $KBRD(size)} {
         ::KPV::GetBoard
         set messages "board copied\nto clipboard"
+        set currentBlob 0
     }
+    ::KPV::ChangeCurrentBlob $currentBlob
 }
-proc ::KPV::ShowCurrentBlob {} {
+proc ::KPV::ChangeCurrentBlob {whichBlob} {
     variable KTOP
     variable KBRD
-    variable blobId
 
-    set color [lindex $::COLOR(blobs) $blobId]
-    $KTOP.blobsums.m1 config -bg $color -text "Current Blob #$blobId"
+    set color [lindex $::COLOR(blobs) $whichBlob]
+    $KTOP.blobsums.m1 config -bg $color -text "Current Blob #$whichBlob"
 
     set bg [lindex [$KTOP.blobsums.bs0 config -bg] 3]
     foreach id $KBRD(indices) {
         $KTOP.blobsums.bs$id config -bg $bg
     }
-    if {$blobId < $KBRD(size)} {
-        $KTOP.blobsums.bs$blobId config -bg $color
+    if {$whichBlob < $KBRD(size)} {
+        $KTOP.blobsums.bs$whichBlob config -bg $color
     }
 
 }
