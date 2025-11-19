@@ -1,0 +1,288 @@
+#!/bin/sh
+# Restart with tcl: -*- mode: tcl; tab-width: 8; -*- \
+exec tclsh $0 ${1+"$@"}
+
+##+##########################################################################
+#
+# kblob.tsh -- <description>
+# by Keith Vetter 2025-11-18
+#
+
+set CELL_EMPTY "-"
+
+proc GrowAllBlobs {_KBRD size} {
+    upvar 1 $_KBRD KBRD
+    CreateBoard KBRD $size
+    foreach blobId $KBRD(indices) {
+        GrowOneBlob KBRD $blobId
+    }
+}
+proc GrowOneBlob {_KBRD blobId} {
+    upvar 1 $_KBRD KBRD
+    set blobSymbol [lindex {A B C D E F G H I J K L} $blobId]
+
+    set emptyCells [ExtractBlob KBRD $::CELL_EMPTY]
+
+    array set nextBoard [array get KBRD]
+    set firstCell [lpick $emptyCells]
+    lassign $firstCell row col
+    set nextBoard($row,$col) $blobSymbol
+    set nextBoard(blob,$blobId,cells) [list $firstCell]
+
+    set qboard [BoardToDict nextBoard]
+    if {$nextBoard(size) > 1} {
+        set queue [list $qboard]
+        set qboard [_GrowOneBlobQueue $queue $blobId]
+    }
+    DictToBoard KBRD $qboard
+}
+proc _GrowOneBlobQueue {queue blobId} {
+    set blobSymbol [lindex {A B C D E F G H I J K L} $blobId]
+    while {[llength $queue] > 0} {
+        set queue [lassign $queue qboard]
+        set neighbors [GetAllEmptyNeighbors $blobId $qboard]
+
+        foreach cell $neighbors {
+            lassign $cell row col
+            DictToBoard nextBoard $qboard
+            set nextBoard($row,$col) $blobSymbol
+            lappend nextBoard(blob,$blobId,cells) $cell
+
+            if {! [IsValidBoard nextBoard $blobId]} continue
+
+            set queue [linsert $queue 0 [BoardToDict nextBoard]]
+            if {[llength $nextBoard(blob,$blobId,cells)] == $nextBoard(size)} {
+                return [lindex $queue 0]
+            }
+        }
+    }
+    error "no blob could be created"
+}
+proc IsValidBoard {_board blobId} {
+    upvar 1 $_board board
+
+    set size $board(size)
+    set stillNeeded [expr {$size - [llength $board(blob,$blobId,cells)]}]
+    set lakes [FindAllLakes board]
+    foreach lake $lakes {
+        set excess [expr {[llength $lake] % $size}]
+        if {$excess == 0} continue
+        if {$excess > $stillNeeded} { return False }
+        set stillNeeded [expr {$stillNeeded - $excess}]
+    }
+    set result [expr {$stillNeeded == 0}]
+    return $result
+}
+
+# def IsValidBoard(board: BoardType, inBlob: list[CellType]) -> bool:
+#     size = len(board)
+#     still_needed = size - len(inBlob)
+#     lakes = FindAllLakes(board)
+
+#     for lake in lakes:
+#         excess = len(lake) % size
+#         if excess == 0:
+#             continue
+#         if excess > still_needed:
+#             return False
+#         still_needed -= excess
+#     result = still_needed == 0
+#     return result
+
+proc ShowBoard {_brd} {
+    upvar 1 $_brd brd
+
+    set size $brd(size)
+    set width [expr {2 * $brd(size) + 1}]
+    set horizontal [string repeat "\u2501" $width]
+
+    puts "    $brd(indices)"
+    puts "  \u250f$horizontal\u2513"
+    foreach row $brd(indices) {
+        puts -nonewline "$row \u2503 "
+        foreach col $brd(indices) {
+            puts -nonewline "$brd($row,$col) "
+        }
+        puts -nonewline "\u2503"
+        # if {$brd(blob,$row,cells) ne {}} {
+        #     set pretty [lmap x $brd(blob,$row,cells) { join $x "," }]
+        #     puts -nonewline "  blob $row: $pretty"
+        # }
+        puts ""
+    }
+    puts "  \u2517$horizontal\u251b"
+
+    # foreach idx $brd(indices) {
+    #     if {$brd(blob,$idx,cells) ne {}} {
+    #         puts "blob $idx: $brd(blob,$idx,cells)"
+    #     }
+    # }
+}
+
+proc CreateBoard {_KBRD size} {
+    upvar 1 $_KBRD KBRD
+    array unset KBRD
+
+    set KBRD(size) $size
+    set KBRD(indices) [lrange {0 1 2 3 4 5 6 7 8 9 10 11} 0 $size-1]
+    foreach row $KBRD(indices) {
+        set KBRD(blob,$row,cells) {}
+        foreach col $KBRD(indices) {
+            set KBRD($row,$col) $::CELL_EMPTY
+        }
+    }
+}
+
+proc BoardToDict {_KBRD} {
+    upvar 1 $_KBRD KBRD
+
+    set bdict [dict create {*}[array get KBRD]]
+    return $bdict
+}
+proc DictToBoard {_KBRD dbrd} {
+    upvar 1 $_KBRD KBRD
+
+    array unset KBRD
+    array set KBRD $dbrd
+}
+
+proc ExtractBlob {_KBRD blobSymbol} {
+    upvar 1 $_KBRD KBRD
+
+    set emptyCells {}
+    foreach row $KBRD(indices) {
+        foreach col $KBRD(indices) {
+            if {$KBRD($row,$col) eq $blobSymbol} {
+                lappend emptyCells [list $row $col]
+            }
+        }
+    }
+    return $emptyCells
+}
+proc lpick {llist} {
+    set idx [expr {int(rand() * [llength $llist])}]
+    return [lindex $llist $idx]
+}
+
+proc GetAllEmptyNeighbors {blobId qboard} {
+    DictToBoard board $qboard
+
+    set neighbors {}
+    foreach cell $board(blob,$blobId,cells) {
+        lassign $cell row0 col0
+        foreach {drow dcol} {0 1 0 -1 1 0 -1 0} {
+            set row [expr {$row0 + $drow}]
+            set col [expr {$col0 + $dcol}]
+            if {$row < 0 || $row >= $board(size)} continue
+            if {$col < 0 || $col >= $board(size)} continue
+            if {$board($row,$col) ne $::CELL_EMPTY} continue
+            lappend neighbors [list $row $col]
+        }
+    }
+    set neighbors [Shuffle $neighbors]
+    return $neighbors
+}
+proc Shuffle {myList} {
+    set len [llength $myList]
+    while {$len} {
+        set n [expr {int($len*rand())}]
+        set tmp [lindex $myList $n]
+        lset myList $n [lindex $myList [incr len -1]]
+        lset myList $len $tmp
+    }
+    return $myList
+}
+
+
+proc FloodFill {_KBRD row0 col0 oldValue newValue} {
+    upvar 1 $_KBRD KBRD
+
+    if {$KBRD($row0,$col0) != $oldValue} {
+        return {}
+    }
+    set Q [list [list $row0 $col0]]
+
+    set floodCells {}
+    while {[llength $Q] > 0} {
+        set Q [lassign $Q cell]
+        lassign $cell row col
+        set KBRD($row,$col) $newValue
+        lappend floodCells [list $row $col]
+
+        foreach {drow dcol} {-1 0 1 0 0 1 0 -1} {
+            set row1 [expr {$row + $drow}]
+            set col1 [expr {$col + $dcol}]
+            if {$row1 < 0 || $row1 >= $KBRD(size) || $col1 < 0 || $col1 >= $KBRD(size)} continue
+            if {$KBRD($row1,$col1) != $oldValue} continue
+
+            set newCell [list $row1 $col1]
+            if {$newCell ni $Q} {
+                lappend Q $newCell
+            }
+        }
+    }
+
+    return $floodCells
+}
+
+proc FindAllLakes {_KBRD} {
+    upvar 1 $_KBRD KBRD
+
+    set all_lakes {}
+    array set floodBoard [array get KBRD]
+    set idx -1
+    while {1} {
+        incr idx
+
+        set empty [ExtractBlob floodBoard $::CELL_EMPTY]
+        if {$empty eq {}} break
+        lassign [lindex $empty 0] row col
+        set floodSymbol [lindex {a b c d e f g h i j k} $idx]
+        FloodFill floodBoard $row $col $::CELL_EMPTY $floodSymbol
+
+        set lake [ExtractBlob floodBoard $floodSymbol]
+        lappend all_lakes $lake
+    }
+    return $all_lakes
+}
+proc test_FindAllLakes {} {
+    set data {"----" "-AAA" "-AAA" "--AA"}
+    DecodeBoard KBRD $data
+    set lakes [FindAllLakes KBRD]
+    puts "[llength $lakes] $lakes"
+
+    set data {"----" "-AAA" "-A--" "--AA"}
+    DecodeBoard KBRD $data
+    set lakes [FindAllLakes KBRD]
+    puts "[llength $lakes] $lakes"
+
+}
+proc DecodeBoard {_KBRD data} {
+    upvar 1 $_KBRD KBRD
+    set size [llength $data]
+    set KBRD(size) $size
+    set KBRD(indices) [lrange {0 1 2 3 4 5 6 7 8 9 10 11} 0 $size-1]
+    foreach row $KBRD(indices) datum $data {
+        set KBRD(blob,$row,cells) {}
+        foreach col $KBRD(indices) char [split $datum ""] {
+            set KBRD($row,$col) $char
+        }
+    }
+}
+
+
+
+proc sb {} {
+    ShowBoard ::KBRD
+}
+
+# set bad {"AA---" "BAAA-" "B----" "BBCC-" "BCCCC"}
+# DecodeBoard KBRD $bad
+# set KBRD(blob,0,cells) [ExtractBlob KBRD "A"]
+# set KBRD(blob,1,cells) [ExtractBlob KBRD "B"]
+# set KBRD(blob,2,cells) [ExtractBlob KBRD "C"]
+# sb
+# GrowOneBlob KBRD 3
+
+GrowAllBlobs KBRD 9
+sb
