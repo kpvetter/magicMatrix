@@ -65,7 +65,8 @@ proc ::Solve::_Progress {_XBRD} {
 
     set progressFlag 0
     foreach sliceType {row col blob} {
-        if {$sliceType eq "blob" && ! [info exists XBRD(blob,0)]} continue
+        if {$sliceType eq "blob" && ! $XBRD(hasBlobs)} continue
+
         foreach whichSlice $XBRD(indices) {
             lassign [::Solve::_TryProgressing XBRD $sliceType $whichSlice] keep delete
 
