@@ -122,21 +122,18 @@ proc ::NewBoard::_Create {size bias {seed ?}} {
     set ::NewBoard::seed $seed
     expr {srand($seed)}
 
-    unset -nocomplain newBoard
-    unset -nocomplain solution
-
     set density [expr {int(rand() * 30) + 20}]
     set selectedCount [expr {round(($size * $size) * $density / 100.)}]
 
-    unset -nocomplain newBoard
-    unset -nocomplain solution
+    ::NewBoard::BlankBoard $size
     ::NewBoard::PickSelected $selectedCount $size
     ::NewBoard::FillAllCells
     ::NewBoard::FixDeadlyPatterns
+    ::NewBoard::Blobify
     ::NewBoard::ComputeSums
     set newBoard(blobs) {}
 }
-proc ::NewBoard::PickSelected {selectedCount size} {
+proc ::NewBoard::BlankBoard {size} {
     variable newBoard
     variable solution
 
@@ -144,6 +141,10 @@ proc ::NewBoard::PickSelected {selectedCount size} {
     unset -nocomplain solution
     set newBoard(size) $size
     set newBoard(indices) [lrange {0 1 2 3 4 5 6 7 8 9 10} 0 $size-1]
+}
+proc ::NewBoard::PickSelected {selectedCount size} {
+    variable newBoard
+    variable solution
 
     # Make sure each slice has a selected element
     foreach which $newBoard(indices) {
@@ -213,13 +214,34 @@ proc ::NewBoard::CheckForDeadlyPatterns {} {
         }
     }
     return $deadly
-
 }
+proc ::NewBoard::Blobify {} {
+    variable newBoard
+    variable solution
+
+    foreach idx $newBoard(indices) {
+        set newBoard(blob,$idx,cells) {}
+    }
+}
+
 proc ::NewBoard::ComputeSums {} {
     variable newBoard
     variable solution
 
-    set size $newBoard(size)
+    foreach sliceType {row col blob} {
+        foreach whichSlice $newBoard(indices) {
+            set cells [GetAllCellsForSlice newBoard $sliceType $whichSlice]
+            set newBoard($sliceType,$whichSlice) 0
+
+            foreach cell [lmap x $cells { join $x "," }] {
+                if {[info exists solution($cell)]} {
+                    incr newBoard($sliceType,$whichSlice) $newBoard($cell)
+                }
+            }
+        }
+    }
+
+    return
     foreach row $newBoard(indices) {
         set values [lmap k [array names solution $row,*] { set newBoard($k) } ]
         set newBoard(row,$row) [expr [join [concat $values 0] "+"]]

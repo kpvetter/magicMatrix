@@ -1082,8 +1082,7 @@ proc StartGame {{sizeOverride ?} {seed ?} {fname ?}} {
         }
     } else {
         lassign [::Settings::GetBoardSize $sizeOverride] size extraHard
-        set defaultBias 8
-        ::NewBoard::Create $size $defaultBias $seed $extraHard
+        ::NewBoard::Create $size $seed $extraHard
     }
 
     set BB [::NewBoard::GetBoard]
@@ -1577,8 +1576,8 @@ proc Help {} {
     Bullet "Play starts a new game with a random size (changeable in settings)"
 
     T "\n"
-    T "Slice Sums Hints\n" h2
-    Bullet "The small number below the slice sum is total still needed to reach the goal"
+    T "Slice Sums Numbers\n" h2
+    Bullet "As you select numbers, the slice sum gets smaller until it reaches 0 and is done"
     Bullet "The small number above the slice sum is the excess above the goal\n"
 
     T "Slice Sums Colors\n" h2
@@ -1604,7 +1603,6 @@ proc Help {} {
     T "Keyboard Shortcuts\n" h2
     Bullet "Escape: do all forced moves"
     Bullet "Ctrl-z: undo"
-    Bullet "Ctrl-q: quick pass removing items larger than their slice target"
 
     T "\n"
     T "First Pass\n" h2
