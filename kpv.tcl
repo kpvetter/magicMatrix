@@ -16,6 +16,8 @@ if {$::tcl_platform(os) eq "Darwin" && [info tclversion] < 9.0} {
 }
 
 catch {namespace delete ::KPV }
+set COLOR(blobs) {#d95d4c #5a9ee0 #bce5d0 #d54782 #936bf3 #9bbc20 #ca7a18 #e68e7b
+    #6e82e7 #f42ad7 #7316f2 #49cadb}
 
 namespace eval ::KPV {
     variable KBRD

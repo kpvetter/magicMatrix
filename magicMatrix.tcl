@@ -121,7 +121,9 @@ proc DoDisplay {} {
         -highlightthickness 0 -bd 0 -bg $COLOR(bg)
     pack .c -side top -fill both -expand 1
     bind all <Escape> DoAllForced
-    bind all <F1> ::Hint::Cheat
+    # bind all <F1> ::Hint::Cheat
+    bind all <F1> ::Hint::QuickPass
+    bind all <F2> {set ::Settings::MODE(autoforce) [expr {! $::Settings::MODE(autoforce)}]}
     bind all <F4> StartGame
     bind all <Control-Key-z> ::Undo::UndoMove
     bind all <Control-Key-f> ::Hint::BestSlice
