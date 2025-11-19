@@ -8,20 +8,25 @@ exec tclsh $0 ${1+"$@"}
 # by Keith Vetter 2025-11-18
 #
 
-set CELL_EMPTY "-"
 
-proc GrowAllBlobs {size} {
-    set board [CreateBoard $size]
+namespace eval ::Blobs {
+    variable CELL_EMPTY "-"
+}
+
+proc ::Blobs::Create {size} {
+    set board [::Blobs::_CreateBoard $size]
 
     foreach blobId [dict get $board indices] {
-        set board [GrowOneBlob $board $blobId]
+        set board [::Blobs::_GrowOne $board $blobId]
+        if {$board eq ""} break
     }
     return $board
 }
-proc GrowOneBlob {board blobId} {
+proc ::Blobs::_GrowOne {board blobId} {
+    variable CELL_EMPTY
     set blobSymbol [lindex {A B C D E F G H I J K L} $blobId]
 
-    set emptyCells [ExtractBlob $board $::CELL_EMPTY]
+    set emptyCells [::Blobs::_ExtractBlob $board $CELL_EMPTY]
 
     set nextBoard $board
     set firstCell [lpick $emptyCells]
@@ -32,15 +37,15 @@ proc GrowOneBlob {board blobId} {
     if {[dict get $nextBoard size] == 1} { return $nextBoard }
 
     set queue [list $nextBoard]
-    set nextBoard [_GrowOneBlobQueue $queue $blobId]
+    set nextBoard [::Blobs::_GrowOneQueue $queue $blobId]
     return $nextBoard
 }
-proc _GrowOneBlobQueue {queue blobId} {
+proc ::Blobs::_GrowOneQueue {queue blobId} {
     set size [dict get [lindex $queue 0] size]
     set blobSymbol [lindex {A B C D E F G H I J K L} $blobId]
     while {[llength $queue] > 0} {
         set queue [lassign $queue board]
-        set neighbors [GetAllEmptyNeighbors $board $blobId]
+        set neighbors [::Blobs::_GetAllEmptyNeighbors $board $blobId]
 
         foreach cell $neighbors {
             lassign $cell row col
@@ -48,7 +53,7 @@ proc _GrowOneBlobQueue {queue blobId} {
             dict set nextBoard $row,$col $blobSymbol
             dict lappend nextBoard blob,$blobId,cells $cell
 
-            if {! [IsValidBoard $nextBoard $blobId]} continue
+            if {! [::Blobs::_IsValidBoard $nextBoard $blobId]} continue
 
             set queue [linsert $queue 0 $nextBoard]
             set blobCells [dict get $nextBoard blob,$blobId,cells]
@@ -57,14 +62,14 @@ proc _GrowOneBlobQueue {queue blobId} {
             }
         }
     }
-    error "no blob could be created"
+    return ""
 }
-proc IsValidBoard {board blobId} {
+proc ::Blobs::_IsValidBoard {board blobId} {
     set size [dict get $board size]
     set blobCells [dict get $board blob,$blobId,cells]
 
     set stillNeeded [expr {$size - [llength $blobCells]}]
-    set lakes [FindAllLakes $board]
+    set lakes [::Blobs::_FindAllLakes $board]
     foreach lake $lakes {
         set excess [expr {[llength $lake] % $size}]
         if {$excess == 0} continue
@@ -74,7 +79,7 @@ proc IsValidBoard {board blobId} {
     set result [expr {$stillNeeded == 0}]
     return $result
 }
-proc ShowBoard {board {showBlobs False}} {
+proc ::Blobs::ShowBoard {board {showBlobs False}} {
     set size [dict get $board size]
     set indices [dict get $board indices]
 
@@ -99,20 +104,21 @@ proc ShowBoard {board {showBlobs False}} {
     puts "  \u2517$horizontal\u251b"
 }
 
-proc CreateBoard {size} {
+proc ::Blobs::_CreateBoard {size} {
+    variable CELL_EMPTY
     set indices [lrange {0 1 2 3 4 5 6 7 8 9 10 11} 0 $size-1]
     set board [dict create size $size indices $indices]
 
     foreach row $indices {
         dict set board blob,$row,cells {}
         foreach col $indices {
-            dict set board $row,$col $::CELL_EMPTY
+            dict set board $row,$col $CELL_EMPTY
         }
     }
     return $board
 }
 
-proc ExtractBlob {board blobSymbol} {
+proc ::Blobs::_ExtractBlob {board blobSymbol} {
     set indices [dict get $board indices]
 
     set emptyCells {}
@@ -126,12 +132,9 @@ proc ExtractBlob {board blobSymbol} {
     }
     return $emptyCells
 }
-proc lpick {llist} {
-    set idx [expr {int(rand() * [llength $llist])}]
-    return [lindex $llist $idx]
-}
 
-proc GetAllEmptyNeighbors {board blobId} {
+proc ::Blobs::_GetAllEmptyNeighbors {board blobId} {
+    variable CELL_EMPTY
     set size [dict get $board size]
     set blobCells [dict get $board blob,$blobId,cells]
 
@@ -144,26 +147,15 @@ proc GetAllEmptyNeighbors {board blobId} {
             if {$row < 0 || $row >= $size} continue
             if {$col < 0 || $col >= $size} continue
             set value [dict get $board $row,$col]
-            if {$value ne $::CELL_EMPTY} continue
+            if {$value ne $CELL_EMPTY} continue
             lappend neighbors [list $row $col]
         }
     }
     set neighbors [Shuffle $neighbors]
     return $neighbors
 }
-proc Shuffle {myList} {
-    set len [llength $myList]
-    while {$len} {
-        set n [expr {int($len*rand())}]
-        set tmp [lindex $myList $n]
-        lset myList $n [lindex $myList [incr len -1]]
-        lset myList $len $tmp
-    }
-    return $myList
-}
 
-
-proc FloodFill {board row0 col0 oldValue newValue} {
+proc ::Blobs::_FloodFill {board row0 col0 oldValue newValue} {
     if {[dict get $board $row0,$col0] != $oldValue} {
         return [list $board {}]
     }
@@ -194,20 +186,22 @@ proc FloodFill {board row0 col0 oldValue newValue} {
 
     return [list $floodBoard $floodCells]
 }
-proc test_floodFill {} {
+proc ::Blobs::test_FloodFill {} {
+    variable CELL_EMPTY
     set data {"---A" "A---" "-A---" "-AAA"}
-    set board [DecodeBoard $data]
+    set board [::Blobs::_DecodeBoard $data]
 
-    lassign [FloodFill $board 1 1 $::CELL_EMPTY "B"] board floodCells
-    ShowBoard $board
+    lassign [::Blobs::_FloodFill $board 1 1 $CELL_EMPTY "B"] board floodCells
+    ::Blobs::ShowBoard $board
 
-    lassign [FloodFill $board 3 0 $::CELL_EMPTY "C"] board floodCells
-    ShowBoard $board
+    lassign [::Blobs::_FloodFill $board 3 0 $CELL_EMPTY "C"] board floodCells
+    ::Blobs::ShowBoard $board
     return $board
 }
 
 
-proc FindAllLakes {board} {
+proc ::Blobs::_FindAllLakes {board} {
+    variable CELL_EMPTY
     set all_lakes {}
     set floodBoard $board
 
@@ -216,31 +210,31 @@ proc FindAllLakes {board} {
         incr idx
         set floodSymbol [lindex {a b c d e f g h i j k} $idx]
 
-        set empty [ExtractBlob $floodBoard $::CELL_EMPTY]
+        set empty [::Blobs::_ExtractBlob $floodBoard $CELL_EMPTY]
         if {$empty eq {}} break
         lassign [lindex $empty 0] row col
 
-        lassign [FloodFill $floodBoard $row $col $::CELL_EMPTY $floodSymbol] floodBoard lake
+        lassign [::Blobs::_FloodFill $floodBoard $row $col $CELL_EMPTY $floodSymbol] floodBoard lake
         lappend all_lakes $lake
     }
     return $all_lakes
 }
-proc test_FindAllLakes {} {
+proc Blobs::test_FindAllLakes {} {
     set data {"----" "-AAA" "-AAA" "--AA"}
-    set board [DecodeBoard $data]
-    set lakes [FindAllLakes $board]
+    set board [::Blobs::_DecodeBoard $data]
+    set lakes [::Blobs::_FindAllLakes $board]
     puts "[llength $lakes] $lakes"
 
     set data {"----" "-AAA" "-A--" "--AA"}
-    set board [DecodeBoard $data]
-    set lakes [FindAllLakes $board]
+    set board [::Blobs::_DecodeBoard $data]
+    set lakes [::Blobs::_FindAllLakes $board]
     puts "[llength $lakes] $lakes"
 
 }
 
-proc DecodeBoard {data} {
+proc ::Blobs::_DecodeBoard {data} {
     set size [llength $data]
-    set board [CreateBoard $size]
+    set board [::Blobs::_CreateBoard $size]
     set indices [dict get $board indices]
 
     foreach row $indices datum $data {
@@ -250,14 +244,48 @@ proc DecodeBoard {data} {
     }
     return $board
 }
+################################################################
+proc Shuffle {myList} {
+    set len [llength $myList]
+    while {$len} {
+        set n [expr {int($len*rand())}]
+        set tmp [lindex $myList $n]
+        lset myList $n [lindex $myList [incr len -1]]
+        lset myList $len $tmp
+    }
+    return $myList
+}
+proc lpick {llist} {
+    set idx [expr {int(rand() * [llength $llist])}]
+    return [lindex $llist $idx]
+}
+proc Comma {num} {
+    while {[regsub {^([-+]?[0-9]+)([0-9][0-9][0-9])} $num {\1,\2} num]} {}
+    return $num
+}
+proc TimeIt {count boardSize} {
+    puts "starting timer for creating [Comma $count] boards of size $boardSize"
+    set start [clock milliseconds]
+    set failures 0
+    for {set i 0} {$i < $count} {incr i} {
+        set board [::Blobs::Create $boardSize]
+        if {$board eq ""} { incr failures }
+    }
+    set stop [clock milliseconds]
+    set total [expr {$stop - $start}]
+    puts "$count -> [Comma $total]ms  failures: $failures"
+}
+
 if {0} {
     set bad {"AA---" "BAAA-" "B----" "BBCC-" "BCCCC"}
-    set board [DecodeBoard $bad]
-    dict set board blob,0,cells [ExtractBlob $board "A"]
-    dict set board blob,1,cells [ExtractBlob $board "B"]
-    dict set board blob,2,cells [ExtractBlob $board "C"]
-    ShowBoard $board
-    GrowOneBlob $board 3
+    set board [::Blobs::_DecodeBoard $bad]
+    dict set board blob,0,cells [::Blobs::_ExtractBlob $board "A"]
+    dict set board blob,1,cells [::Blobs::_ExtractBlob $board "B"]
+    dict set board blob,2,cells [::Blobs::_ExtractBlob $board "C"]
+    ::Blobs::ShowBoard $board
+    ::Blobs::_GrowOne $board 3
 }
-set board [GrowAllBlobs 9]
-ShowBoard $board
+set board [::Blobs::Create 9]
+::Blobs::ShowBoard $board
+
+TimeIt 100 9
