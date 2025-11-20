@@ -8,6 +8,7 @@ exec tclsh $0 ${1+"$@"}
 # by Keith Vetter 2025-09-24
 #
 # XBRD(size) size of puzzle
+# XBRD(indices) range($XBRD(size))
 # XBRD(row,#) row target
 # XBRD(col,#) col target
 # XBRD(blob,#) blob target
@@ -25,6 +26,7 @@ proc ::Solve::IsSolvable {_BRD} {
 
     # Copy board into a temp array
     array set XBRD [array get BRD]
+    ::Solve::_NeuterBoard XBRD
 
     set solvingPasses {}
     while {1} {
@@ -40,6 +42,15 @@ proc ::Solve::IsSolvable {_BRD} {
 }
 proc ::Solve::GetSolution {} {
     return $::Solve::solution
+}
+
+proc ::Solve::_NeuterBoard {_XBRD} {
+    upvar 1 $_XBRD XBRD
+    foreach row $XBRD(indices) {
+        foreach col $XBRD(indices) {
+            lset XBRD($row,$col) 1 "normal"
+        }
+    }
 }
 
 proc ::Solve::_CheckForSolved {_XBRD} {
