@@ -28,15 +28,19 @@ proc ::NewBoard::Create {size seed extraHard} {
 
     for {set createAttempts 1} {$createAttempts <= 100} {incr createAttempts} {
         ::NewBoard::_Create $size $seed
-
         set isSolvable [::Solve::IsSolvable ::NewBoard::newBoard]
 
         if {! $isSolvable} continue
         if {! $extraHard} return
         if {$extraHard && $isSolvable >= $threshold} return
-        if {$isSolvable > $hardest} { set hardest $isSolvable ; set hardestSeed $::NewBoard::seed }
+
+        if {$isSolvable > $hardest} {
+            set hardest $isSolvable ;
+            set hardestSeed $::NewBoard::seed
+        }
     }
     if {$hardest > -1} {
+        # Couldn't find extraHard board, use hardest found so far
         ::NewBoard::_Create $size $hardestSeed
         ::Solve::IsSolvable ::NewBoard::newBoard  ;# Insure ::Solve::GetSolution is correct
     } else {
@@ -129,15 +133,15 @@ proc ::NewBoard::_Create {size {seed ?}} {
     set density [expr {int(rand() * 30) + 20}]
     set selectedCount [expr {round(($size * $size) * $density / 100.)}]
 
-    ::NewBoard::BlankBoard $size
-    ::NewBoard::PickSelected $selectedCount $size
-    ::NewBoard::FillAllCells
-    ::NewBoard::FixDeadlyPatterns
-    ::NewBoard::Blobify
-    ::NewBoard::ComputeSums
+    ::NewBoard::_BlankBoard $size
+    ::NewBoard::_PickSelected $selectedCount $size
+    ::NewBoard::_FillAllCells
+    ::NewBoard::_FixDeadlyPatterns
+    ::NewBoard::_Blobify
+    ::NewBoard::_ComputeSums
     set newBoard(blobs) {}
 }
-proc ::NewBoard::BlankBoard {size} {
+proc ::NewBoard::_BlankBoard {size} {
     variable newBoard
     variable selected {}
 
@@ -157,7 +161,7 @@ proc ::NewBoard::BlankBoard {size} {
         }
     }
 }
-proc ::NewBoard::PickSelected {selectedCount size} {
+proc ::NewBoard::_PickSelected {selectedCount size} {
     variable newBoard
     variable selected {}
 
@@ -182,11 +186,11 @@ proc ::NewBoard::PickSelected {selectedCount size} {
         set newBoard($row,$col) [list - select]
     }
 }
-proc ::NewBoard::FixDeadlyPatterns {} {
+proc ::NewBoard::_FixDeadlyPatterns {} {
     variable newBoard
 
     while {True} {
-        set deadly [::NewBoard::CheckForDeadlyPatterns]
+        set deadly [::NewBoard::_CheckForDeadlyPatterns]
         if {$deadly eq {}} break
 
         foreach box $deadly {
@@ -199,7 +203,7 @@ proc ::NewBoard::FixDeadlyPatterns {} {
     }
 
 }
-proc ::NewBoard::CheckForDeadlyPatterns {} {
+proc ::NewBoard::_CheckForDeadlyPatterns {} {
     # If the four corners of any rectangle in the grid are all the
     # same value, then the puzzle has multiple solutions.
     variable newBoard
@@ -232,7 +236,7 @@ proc ::NewBoard::CheckForDeadlyPatterns {} {
     }
     return $deadly
 }
-proc ::NewBoard::Blobify {} {
+proc ::NewBoard::_Blobify {} {
     variable newBoard
 
     foreach idx $newBoard(indices) {
@@ -240,7 +244,7 @@ proc ::NewBoard::Blobify {} {
     }
 }
 
-proc ::NewBoard::ComputeSums {} {
+proc ::NewBoard::_ComputeSums {} {
     variable newBoard
 
 
@@ -254,7 +258,7 @@ proc ::NewBoard::ComputeSums {} {
 
     return
 }
-proc ::NewBoard::FillAllCells {} {
+proc ::NewBoard::_FillAllCells {} {
     variable newBoard
 
     foreach row $newBoard(indices) {
@@ -344,7 +348,7 @@ proc ::NewBoard::FromFile {fname} {
         return 0
     }
 
-    ::NewBoard::BlankBoard $size
+    ::NewBoard::_BlankBoard $size
     # Extract slice sums
     foreach idx $newBoard(indices) {
         set newBoard(row,$idx) [lindex $lines $idx+1 0]
