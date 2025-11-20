@@ -759,15 +759,22 @@ proc roundRect { w x0 y0 x3 y3 radius args } {
 proc FillInBlobs {} {
     global BB BRD
 
+    set BRD(hasBlobs) False
     foreach line $BB {
         if {! [string match blob* $line]} continue
+        set BRD(hasBlobs) True
         set cells [lassign $line _ id target]
         set BRD(blob,$id) $target
         set BRD(blob,$id,cells) $cells
         set BRD(blob,$id,color) [lindex $::COLOR(blobs) $id]
         set BRD(blob,$id,active) 1
     }
-    set BRD(hasBlobs) [info exists BRD(blob,0)]
+    if {! $BRD(hasBlobs)} {
+        foreach whichSlice $BRD(indices) {
+            set BRD(blob,$whichSlice) 0
+            set BRD(blob,$whichSlice,cells) {}
+        }
+    }
 }
 proc ColorizeBlobs {} {
     global BRD S
@@ -871,6 +878,19 @@ proc GetAllCellsForSlice {_BRD sliceType whichSlice} {
     }
     return $cells
 }
+proc GetAllCellsForSliceDICT {BRD sliceType whichSlice} {
+    if {$sliceType eq "blob"} { return [dict get $BRD blob,$whichSlice,cells] }
+
+    set cells {}
+    foreach i [dict get $BRD indices] {
+        if {$sliceType eq "row"} {
+            lappend cells [list $whichSlice $i]
+        } else {
+            lappend cells [list $i $whichSlice]
+        }
+    }
+    return $cells
+}
 proc GetNthCellInSlice {_BRD sliceType whichSlice index} {
     upvar 1 $_BRD BRD
     set cells [GetAllCellsForSlice BRD $sliceType $whichSlice]
@@ -895,6 +915,24 @@ proc GetSliceSums {_BRD sliceType whichSlice} {
     }
     return [list $selectedTotal $unselectedTotal]
 }
+proc GetSliceSumsDICT {BRD sliceType whichSlice} {
+    set selectedTotal 0
+    set unselectedTotal 0
+
+    set cells [GetAllCellsForSliceDICT $BRD $sliceType $whichSlice]
+
+    foreach cell $cells {
+        lassign $cell row col
+        lassign [dict get $BRD $row,$col] value state
+        if {$state eq "normal"} {
+            incr unselectedTotal $value
+        } elseif {$state eq "select"} {
+            incr selectedTotal $value
+        }
+    }
+    return [list $selectedTotal $unselectedTotal]
+}
+
 proc _ComputeHint {sliceType whichSlice} {
     global BRD
 
@@ -906,7 +944,7 @@ proc _ComputeHint {sliceType whichSlice} {
                                         $BRD($sliceType,$whichSlice) \
                                         $selectedTotal $needed $unselectedTotal]
 
-    lassign [::Solve::SingleSlice BRD $sliceType $whichSlice] keep delete sets
+    lassign [::Solve::SingleSliceARRAY BRD $sliceType $whichSlice] keep delete sets
 
     set BRD($sliceType,$whichSlice,sets) $sets
     set BRD($sliceType,$whichSlice,hint) [join [PrettyKeepDelete $BRD(size) $keep $delete] " "]

@@ -91,7 +91,8 @@ proc ::Blobs::ShowBoard {board {showBlobs False}} {
     foreach row $indices {
         puts -nonewline "$row \u2503 "
         foreach col $indices {
-            puts -nonewline "[dict get $board $row,$col] "
+            lassign [dict get $board $row,$col] value state
+            puts -nonewline "$value "
         }
         puts -nonewline "\u2503"
         set blobCells [dict get $board blob,$row,cells]
