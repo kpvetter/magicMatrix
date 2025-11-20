@@ -40,10 +40,11 @@ exit
 
 package require Tk
 
-source victory.tcl
+source blob.tsh
 source hints.tcl
 source newBoard.tsh
 source solve.tsh
+source victory.tcl
 if {[file exists kpv.tcl]} {
     source kpv.tcl
 }

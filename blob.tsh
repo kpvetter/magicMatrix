@@ -4,7 +4,7 @@ exec tclsh $0 ${1+"$@"}
 
 ##+##########################################################################
 #
-# kblob.tsh -- <description>
+# blob.tsh -- Divides a NxN board into N N-sized contiguous blocks
 # by Keith Vetter 2025-11-18
 #
 
@@ -14,7 +14,7 @@ namespace eval ::Blobs {
 }
 
 proc ::Blobs::Create {size} {
-    set board [::Blobs::_CreateBoard $size]
+    set board [::Blobs::_CreateEmptyBoard $size]
 
     foreach blobId [dict get $board indices] {
         set board [::Blobs::_GrowOne $board $blobId]
@@ -105,7 +105,7 @@ proc ::Blobs::ShowBoard {board {showBlobs False}} {
     puts "  \u2517$horizontal\u251b"
 }
 
-proc ::Blobs::_CreateBoard {size} {
+proc ::Blobs::_CreateEmptyBoard {size} {
     variable CELL_EMPTY
     set indices [lrange {0 1 2 3 4 5 6 7 8 9 10 11} 0 $size-1]
     set board [dict create size $size indices $indices]
@@ -235,7 +235,7 @@ proc Blobs::test_FindAllLakes {} {
 
 proc ::Blobs::_DecodeBoard {data} {
     set size [llength $data]
-    set board [::Blobs::_CreateBoard $size]
+    set board [::Blobs::_CreateEmptyBoard $size]
     set indices [dict get $board indices]
 
     foreach row $indices datum $data {
@@ -278,15 +278,17 @@ proc TimeIt {count boardSize} {
 }
 
 if {0} {
-    set bad {"AA---" "BAAA-" "B----" "BBCC-" "BCCCC"}
-    set board [::Blobs::_DecodeBoard $bad]
-    dict set board blob,0,cells [::Blobs::_ExtractBlob $board "A"]
-    dict set board blob,1,cells [::Blobs::_ExtractBlob $board "B"]
-    dict set board blob,2,cells [::Blobs::_ExtractBlob $board "C"]
+    if {0} {
+        set bad {"AA---" "BAAA-" "B----" "BBCC-" "BCCCC"}
+        set board [::Blobs::_DecodeBoard $bad]
+        dict set board blob,0,cells [::Blobs::_ExtractBlob $board "A"]
+        dict set board blob,1,cells [::Blobs::_ExtractBlob $board "B"]
+        dict set board blob,2,cells [::Blobs::_ExtractBlob $board "C"]
+        ::Blobs::ShowBoard $board
+        ::Blobs::_GrowOne $board 3
+    }
+    set board [::Blobs::Create 9]
     ::Blobs::ShowBoard $board
-    ::Blobs::_GrowOne $board 3
-}
-set board [::Blobs::Create 9]
-::Blobs::ShowBoard $board
 
-TimeIt 100 9
+    TimeIt 100 9
+}

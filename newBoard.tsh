@@ -10,13 +10,15 @@ exec tclsh $0 ${1+"$@"}
 # TODO: change how ::NewBoard::GetBoard data is returned
 #
 
+set NEED_BLOBS True
+
 namespace eval NewBoard {
     variable newBoard
     variable selected {}
     variable seed
 }
 
-proc ::NewBoard::Create {size seed extraHard} {
+proc ::NewBoard::Create {size seed {extraHard False}} {
     variable newBoard
     global createAttempts
 
@@ -74,9 +76,12 @@ proc ::NewBoard::GetBoard {} {
         }
         lappend result $line
     }
-    foreach key $newBoard(blobs) {
-        set line [list blob $key $newBoard(blob,$key) {*}$newBoard(blob,$key,cells)]
-        lappend result $line
+    foreach key $newBoard(indices) {
+        if {$newBoard(blob,$key,cells) ne {}} {
+            set cells [lsort $newBoard(blob,$key,cells)]
+            set line [list blob $key $newBoard(blob,$key) {*}$cells]
+            lappend result $line
+        }
     }
     return $result
 }
@@ -109,6 +114,11 @@ proc ::NewBoard::Debug {{python False}} {
             }
             append result "$line}\n"
         }
+        foreach blobId $newBoard(indices) {
+            if {$newBoard(blob,$blobId,cells) eq {}} continue
+            append result "    {blob $blobId $newBoard(blob,$blobId)"
+            append result " $newBoard(blob,$blobId,cells)}\n"
+        }
         append result "}\n"
     } else {
         append result "board = \[\n"
@@ -134,12 +144,11 @@ proc ::NewBoard::_Create {size {seed ?}} {
     set selectedCount [expr {round(($size * $size) * $density / 100.)}]
 
     ::NewBoard::_BlankBoard $size
+    ::NewBoard::_Blobify
     ::NewBoard::_PickSelected $selectedCount $size
     ::NewBoard::_FillAllCells
     ::NewBoard::_FixDeadlyPatterns
-    ::NewBoard::_Blobify
     ::NewBoard::_ComputeSums
-    set newBoard(blobs) {}
 }
 proc ::NewBoard::_BlankBoard {size} {
     variable newBoard
@@ -165,15 +174,16 @@ proc ::NewBoard::_PickSelected {selectedCount size} {
     variable newBoard
     variable selected {}
 
-    # Make sure each slice has a selected element
-    foreach which $newBoard(indices) {
-        set other [expr {int(rand() * $size)}]
-        lappend selected [list $which $other]
-        set newBoard($which,$other) [list - select]
-
-        set other [expr {int(rand() * $size)}]
-        lappend selected [list $other $which]
-        set newBoard($other,$which) [list - select]
+    # Make sure each row/col slice has a selected element
+    foreach whichSlice $newBoard(indices) {
+        foreach sliceType {row col blob} {
+            if {$sliceType eq "blob" && ! $newBoard(hasBlobs)} continue
+            set cells [GetAllCellsForSlice ::NewBoard::newBoard $sliceType $whichSlice]
+            set pick [lpick $cells]
+            lassign $pick row col
+            set newBoard($row,$col) [list - select]
+            lappend selected $pick
+        }
     }
 
     # Make sure we have selected the right number of cells
@@ -239,8 +249,16 @@ proc ::NewBoard::_CheckForDeadlyPatterns {} {
 proc ::NewBoard::_Blobify {} {
     variable newBoard
 
+    set newBoard(hasBlobs) False
     foreach idx $newBoard(indices) {
         set newBoard(blob,$idx,cells) {}
+    }
+    if {! $::NEED_BLOBS} return
+
+    set newBoard(hasBlobs) True
+    set blobs [::Blobs::Create $newBoard(size)]
+    foreach idx $newBoard(indices) {
+        set newBoard(blob,$idx,cells) [dict get $blobs blob,$idx,cells]
     }
 }
 
