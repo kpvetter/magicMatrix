@@ -170,7 +170,7 @@ proc DrawBoard {size} {
 
         lassign [GridSumsXY row $whichSlice] x0 y0 x1 y1 x y
         set x1a [expr {$x1 - 5}]
-        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list $tagBox $tagBg] -fill $COLOR(TSTATE_NORMAL) -outline black -width 2
+        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list bgTargets $tagBox $tagBg] -fill $COLOR(TSTATE_NORMAL) -outline black -width 2
         .c create text $x $y -tag [list $tagBox $tagText] -font $B(font,sums) -anchor c -text 13
         .c create text $x1a $y0 -tag [list $tagBox $tagHintUnselected] -font $B(font,hints) -anchor ne
         .c create text $x $y1 -tag [list $tagBox $tagHintSelected] -font $B(font,hints) -anchor s
@@ -192,7 +192,7 @@ proc DrawBoard {size} {
 
         lassign [GridSumsXY column $whichSlice] x0 y0 x1 y1 x y
         set x1a [expr {$x1 - 5}]
-        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list $tagBox $tagBg] -fill $COLOR(TSTATE_NORMAL) -outline black -width 2
+        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list bgTargets $tagBox $tagBg] -fill $COLOR(TSTATE_NORMAL) -outline black -width 2
         .c create text $x $y -tag [list $tagBox $tagText] -font $B(font,sums) -anchor c -text 13
         .c create text $x1a $y0 -tag [list $tagBox $tagHintUnselected] -font $B(font,hints) -anchor ne
         .c create text $x $y1 -tag [list $tagBox $tagHintSelected] -font $B(font,hints) -anchor s

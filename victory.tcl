@@ -112,7 +112,7 @@ proc ::Victory::Stop {what} {
     after cancel $config(aid,stop)
     after cancel $config(aid)
     .c itemconfig bg -fill $::COLOR(game,over)
-    .c itemconfig bg2 -fill $::COLOR(TSTATE_DONE)
+    .c itemconfig bgTargets -fill $::COLOR(TSTATE_DONE)
     .c itemconfig victory2 -fill red
     .c itemconfig blobBox -fill $::COLOR(game,over)
     .c lower blob
