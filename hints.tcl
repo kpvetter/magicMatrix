@@ -14,6 +14,7 @@ exec tclsh $0 ${1+"$@"}
 namespace eval ::Hint {
     variable poppedUpItem {}
     variable pausing 0
+    variable MAX_LINES 7
 }
 
 proc ::Hint::Down {sliceType whichSlice verbose} {
@@ -29,6 +30,7 @@ proc ::Hint::Up {sliceType whichSlice} {
 }
 proc ::Hint::Popup {sliceType whichSlice verbose} {
     variable poppedUpItem
+    variable MAX_LINES
     global BRD
 
     set poppedUpItem [list $sliceType $whichSlice]
@@ -49,7 +51,7 @@ proc ::Hint::Popup {sliceType whichSlice verbose} {
     }
 
     .c delete hintPopup
-    set text [::Hint::PrettyText $sliceType $whichSlice 7 $verbose]
+    set text [::Hint::PrettyText $sliceType $whichSlice $MAX_LINES $verbose]
     .c create text $x $y -tag {hintPopup hintText} -anchor $anchor -text $text -justify c \
         -font $::B(font,hintBox)
     set xy [GrowBox [.c bbox hintText] 5]
@@ -122,17 +124,20 @@ proc ::Hint::PrettyText {sliceType whichSlice maxLines verbose} {
     }
 
     set lines {}
-    foreach set $sets {
+    foreach solutionSet $sets {
         set line {}
-        for {set other 0} {$other < $size} {incr other} {
-            set n [lsearch -index 1 -integer -exact $set $other]
+        foreach other $BRD(indices) {
+            set n [lsearch -index 1 -integer -exact $solutionSet $other]
             if {$n > -1} {
-                lappend line [lindex $set $n 0]
+                # This cell is part of this solution set so just display it
+                lappend line [lindex $solutionSet $n 0]
             } else {
-                set what [expr {$sliceType eq "row" ? $BRD($whichSlice,$other) : $BRD($other,$whichSlice)}]
-                set status [lindex $what 1]
+                # This cell is NOT part of the solution set, show its state properly
+                set coords [GetNthCellInSlice BRD $sliceType $whichSlice $other]
+                lassign $BRD([join $coords ","]) value status
+
                 if {$status eq "select"} {
-                    lappend line [NumberToCircle [lindex $what 0]]
+                    lappend line [NumberToCircle $value]
                 } elseif {$status eq "kill"} {
                     lappend line $unselected
                 } else {
