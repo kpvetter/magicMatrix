@@ -12,13 +12,20 @@ exec tclsh $0 ${1+"$@"}
 namespace eval ::Blobs {
     variable CELL_EMPTY "-"
 }
-
 proc ::Blobs::Create {size} {
-    set board [::Blobs::_CreateEmptyBoard $size]
+    global blobPasses
+    set blobPasses 0
 
-    foreach blobId [dict get $board indices] {
-        set board [::Blobs::_GrowOne $board $blobId]
-        if {$board eq ""} break
+    # Sometimes we fail creating blobs, so we must retry (about 10% at size 9)
+    while {True} {
+        incr blobPasses
+        set board [::Blobs::_CreateEmptyBoard $size]
+
+        foreach blobId [dict get $board indices] {
+            set board [::Blobs::_GrowOne $board $blobId]
+            if {$board eq ""} break
+        }
+        if {$board ne ""} break
     }
     return $board
 }
@@ -29,7 +36,7 @@ proc ::Blobs::_GrowOne {board blobId} {
     set emptyCells [::Blobs::_ExtractBlob $board $CELL_EMPTY]
 
     set nextBoard $board
-    set firstCell [lpick $emptyCells]
+    set firstCell [lindex $emptyCells 0]
     lassign $firstCell row col
     dict set nextBoard $row,$col $blobSymbol
     dict lappend nextBoard blob,$blobId,cells $firstCell
@@ -256,39 +263,34 @@ proc Shuffle {myList} {
     }
     return $myList
 }
-proc lpick {llist} {
-    set idx [expr {int(rand() * [llength $llist])}]
-    return [lindex $llist $idx]
-}
-proc Comma {num} {
-    while {[regsub {^([-+]?[0-9]+)([0-9][0-9][0-9])} $num {\1,\2} num]} {}
-    return $num
-}
-proc TimeIt {count boardSize} {
-    puts "starting timer for creating [Comma $count] boards of size $boardSize"
-    set start [clock milliseconds]
-    set failures 0
-    for {set i 0} {$i < $count} {incr i} {
-        set board [::Blobs::Create $boardSize]
-        if {$board eq ""} { incr failures }
+if {[info exists argv0] && [file tail [info script]] eq [file tail $argv0]} {
+    "proc" Comma {num} {
+        while {[regsub {^([-+]?[0-9]+)([0-9][0-9][0-9])} $num {\1,\2} num]} {}
+        return $num
     }
-    set stop [clock milliseconds]
-    set total [expr {$stop - $start}]
-    puts "$count -> [Comma $total]ms  failures: $failures"
-}
+    "proc" TimeIt {count boardSize} {
+        puts "starting timer for creating [Comma $count] boards of size $boardSize"
+        set start [clock milliseconds]
+        set failures 0
+        for {set i 0} {$i < $count} {incr i} {
+            set board [::Blobs::Create $boardSize]
+            if {$board eq ""} { incr failures }
+        }
+        set stop [clock milliseconds]
+        set total [expr {$stop - $start}]
+        puts "$count -> [Comma $total]ms  failures: $failures"
+    }
 
-if {0} {
-    if {0} {
-        set bad {"AA---" "BAAA-" "B----" "BBCC-" "BCCCC"}
-        set board [::Blobs::_DecodeBoard $bad]
-        dict set board blob,0,cells [::Blobs::_ExtractBlob $board "A"]
-        dict set board blob,1,cells [::Blobs::_ExtractBlob $board "B"]
-        dict set board blob,2,cells [::Blobs::_ExtractBlob $board "C"]
-        ::Blobs::ShowBoard $board
-        ::Blobs::_GrowOne $board 3
-    }
+    set board [::Blobs::Create 9]
+    ::Blobs::ShowBoard $board
+    set board [::Blobs::Create 9]
+    ::Blobs::ShowBoard $board
+    set board [::Blobs::Create 9]
+    ::Blobs::ShowBoard $board
+    set board [::Blobs::Create 9]
+    ::Blobs::ShowBoard $board
     set board [::Blobs::Create 9]
     ::Blobs::ShowBoard $board
 
-    TimeIt 100 9
+    # TimeIt 100 9
 }

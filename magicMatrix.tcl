@@ -12,7 +12,6 @@ exit
 # TODO:
 #  mode with punishes guesses -- bark if not forced
 #  check starting size w/ screensize
-#  reveal: from logic or by brute force
 #  show size/seed and create board with size/seed
 #  hide targets when they're at 0
 #  disable undo in cutthroat mode
@@ -102,7 +101,7 @@ set COLOR(title) brown1
 set COLOR(game,over) gray75
 set COLOR(target,highlight) yellow
 set COLOR(target,highlight,blob) magenta
-set COLOR(blobs) {gold cyan orange green pink sienna1 yellow red blue springgreen}
+set COLOR(blobs,cleared) azure
 set COLOR(blobs) {#d95d4c #5a9ee0 #bce5d0 #d54782 #936bf3 #9bbc20 #ca7a18 #e68e7b
     #6e82e7 #f42ad7 #7316f2 #49cadb}
 
@@ -613,7 +612,7 @@ proc GetCellBackground {row col} {
     if {! $BRD(hasBlobs)} { return $COLOR(grid) }
     set blobId [CellToBlob ::BRD $row $col]
     set state [GetSumCellState blob $blobId]
-    if {$state eq "TSTATE_DONE"} { return $COLOR(grid) }
+    if {$state eq "TSTATE_DONE"} { return $COLOR(blobs,cleared) }
     return $BRD(blob,$blobId,color)
 }
 proc SetUpBoardParams {size} {
@@ -761,8 +760,10 @@ proc FillInBlobs {} {
     global BB BRD
 
     set BRD(hasBlobs) False
+    set ::COLOR(blobs) [Shuffle $::COLOR(blobs)]
     foreach line $BB {
         if {! [string match blob* $line]} continue
+
         set BRD(hasBlobs) True
         set cells [lassign $line _ id target]
         set BRD(blob,$id) $target
@@ -1120,8 +1121,8 @@ proc StartGame {{sizeOverride ?} {seed ?} {fname ?}} {
             set ::Settings::MODE(mode) FREE_PLAY
         }
     } else {
-        lassign [::Settings::GetBoardSize $sizeOverride] size extraHard
-        ::NewBoard::Create $size $seed $extraHard
+        lassign [::Settings::GetBoardSize $sizeOverride] size withBlobs
+        ::NewBoard::Create $size $seed $withBlobs
     }
 
     set BB [::NewBoard::GetBoard]
@@ -1347,8 +1348,12 @@ namespace eval ::Settings {
         solve "Hint: include slice solution"
     }
 
-    set BOARD_SIZES(all) {"2 squares" "3 squares" "4 squares" "5 squares" \
-                              "6 squares" "7 squares" "8 squares" "9 squares"}
+    set BOARD_SIZES(all) {
+        "2x2" "3x3" "2x2 3D" "3x3 3D"
+        "4x4" "5x5" "4x4 3D" "5x5 3D"
+        "6x6" "7x7" "6x6 3D" "7x7 3D"
+        "8x8" "9x9" "8x8 3D" "9x9 3D"
+    }
 
     "proc" AllOnOff {who how} {
         variable BOARD_SIZES
@@ -1356,8 +1361,17 @@ namespace eval ::Settings {
         variable HINT_NAMES
 
         if {$who eq "sizes"} {
+            if {[string is boolean $how]} {
+                set unwanted [expr {$how ? {} : $BOARD_SIZES(all)}]
+            } elseif {$how eq "default"} {
+                set unwanted {"2x2" "3x3" "2x2 3D" "3x3 3D" "4x4 3D" "5x5 3D"}
+            } elseif {$how eq "3Doff"} {
+                set unwanted {"2x2 3D" "3x3 3D" "4x4 3D" "5x5 3D" "6x6 3D" "7x7 3D" "8x8 3D" "9x9 3D"}
+            } elseif {$how eq "3Don"} {
+                set unwanted {"2x2" "3x3" "4x4" "5x5" "6x6" "7x7" "8x8" "9x9"}
+            }
             foreach size $BOARD_SIZES(all) {
-                set BOARD_SIZES($size) $how
+                set BOARD_SIZES($size) [expr {$size ni $unwanted}]
             }
         } elseif {$who eq "hints"} {
             foreach x $HINT_NAMES {
@@ -1369,7 +1383,7 @@ namespace eval ::Settings {
     }
 
     unset -nocomplain HINTS
-    AllOnOff sizes 1
+    AllOnOff sizes default
     AllOnOff hints 1
     set HINTS(explode) 1
     set HINTS(countdown) 1
@@ -1452,26 +1466,36 @@ proc ::Settings::Settings {} {
     ################################################################
     # Size panel
     #
+    set WFRAME $WSIZE.sizes
     ::ttk::label $WSIZE.title -text "Puzzle Sizes" -font $::B(font,settings,heading)
+    ::ttk::frame $WFRAME
     grid $WSIZE.title -
+    grid $WFRAME -
 
-    set row 1
+    set row 0
     set col 0
+    set num_columns 4
 
-    foreach size $BOARD_SIZES(all) {
-        set w $WSIZE.rb_$size
-        ::ttk::checkbutton $w -variable ::Settings::BOARD_SIZES($size) -text $size
+    foreach size $::Settings::BOARD_SIZES(all) {
+        set w $WFRAME.rb_$size
+        set text $size
+        ::ttk::checkbutton $w -variable ::Settings::BOARD_SIZES($text) -text $text
         bind $w <$::S(button,right)> [list StartGame [lindex $size 0]]
         grid $w -row $row -column $col -sticky w
-        if {[incr col] > 1} {
+        if {[incr col] >= $num_columns} {
             incr row
             set col 0
         }
     }
+    grid columnconfigure $WFRAME all -pad .2i
+
     ::ttk::button $WSIZE.all0 -text "All on" -command {::Settings::AllOnOff sizes 1}
     ::ttk::button $WSIZE.all1 -text "All off" -command {::Settings::AllOnOff sizes 0}
+    ::ttk::button $WSIZE.blobon -text "All 3D on" -command {::Settings::AllOnOff sizes 3Don}
+    ::ttk::button $WSIZE.bloboff -text "All 3D off" -command {::Settings::AllOnOff sizes 3Doff}
     ::ttk::button $WSIZE.go -text "New Board" -command StartGame
-    grid $WSIZE.all0 $WSIZE.all1 -pady .2i
+    grid $WSIZE.all0 $WSIZE.blobon -pady {.2i 0}
+    grid $WSIZE.all1 $WSIZE.bloboff -pady {0 .2i}
     grid $WSIZE.go -
 
     ################################################################
@@ -1516,20 +1540,23 @@ proc ::Settings::GetBoardSize {{sizeOverride ?}} {
     variable BOARD_SIZES
 
     if {$sizeOverride ne "?"} {
-        if {$sizeOverride eq "9+"} {
-            return [list 9 True]
-        }
-        set sizeOverride [expr {max(2, min(9, $sizeOverride))}]
-        return [list $sizeOverride False]
+        set size [string index $sizeOverride 0]
+        set size [expr {max(2, min(9, $size))}]
+        set withBlob [expr {[string index $sizeOverride end] eq "D"}]
+        return [list $size $withBlob]
     }
-    set numChoices [llength [array names BOARD_SIZES *sq*]]
-    set choices [lmap {k v} [array get BOARD_SIZES *sq*] { if {! $v} continue ; lindex $k 0}]
+
+    set numChoices [llength [array names BOARD_SIZES *x*]]
+    set choices [lmap {k v} [array get BOARD_SIZES *x*] { if {! $v} continue ; set k}]
     if {[llength $choices] == 0 || [llength $choices] == $numChoices} {
         set size [RandomTriangular 2 10 7]
+        set withBlob [expr {$size > 5 && rand() > .5 ? True : False}]
     } else {
-        set size [lpick $choices]
+        set choice [lpick $choices]
+        set size [string index $choice 0]
+        set withBlob [expr {[string index $choice end] eq "D"}]
     }
-    return [list $size False]
+    return [list $size $withBlob]
 }
 proc ::Settings::ShowSolution {forced} {
     variable solutionFrame

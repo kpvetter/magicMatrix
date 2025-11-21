@@ -10,26 +10,24 @@ exec tclsh $0 ${1+"$@"}
 # TODO: change how ::NewBoard::GetBoard data is returned
 #
 
-set NEED_BLOBS True
-
 namespace eval NewBoard {
     variable newBoard
     variable selected {}
     variable seed
 }
 
-proc ::NewBoard::Create {size seed {extraHard False}} {
+proc ::NewBoard::Create {size seed withBlobs} {
     variable newBoard
     global createAttempts
 
-    if {$extraHard && $size < 9} { set extraHard False }
+    set extraHard False
     set threshold 8
 
     set hardest -1
     set hardestSeed ?
 
     for {set createAttempts 1} {$createAttempts <= 100} {incr createAttempts} {
-        ::NewBoard::_Create $size $seed
+        ::NewBoard::_Create $size $seed $withBlobs
         set isSolvable [::Solve::IsSolvable ::NewBoard::newBoard]
 
         if {! $isSolvable} continue
@@ -43,7 +41,7 @@ proc ::NewBoard::Create {size seed {extraHard False}} {
     }
     if {$hardest > -1} {
         # Couldn't find extraHard board, use hardest found so far
-        ::NewBoard::_Create $size $hardestSeed
+        ::NewBoard::_Create $size $hardestSeed $withBlobs
         ::Solve::IsSolvable ::NewBoard::newBoard  ;# Insure ::Solve::GetSolution is correct
     } else {
         tk_messageBox -icon warning -message "This puzzle may require guessing"
@@ -51,11 +49,18 @@ proc ::NewBoard::Create {size seed {extraHard False}} {
 }
 proc ::NewBoard::Info {} {
     variable newBoard
+    variable seed
     global createAttempts
     global solvingPasses
+    global blobPasses
 
-    return [list size $newBoard(size) createAttempts $createAttempts \
-                solvingPasses [llength $solvingPasses]]
+    set result {}
+    lappend result size $newBoard(size) seed $seed
+    lappend result createAttempts $createAttempts solvingPasses [llength $solvingPasses]
+    if {$newBoard(hasBlobs)} {
+        lappend result blobPasses $blobPasses
+    }
+    return $result
 }
 proc ::NewBoard::GetBoard {} {
     # Returns board created by ::NewBoard::Create as a list of list of ints
@@ -131,7 +136,7 @@ proc ::NewBoard::Debug {{python False}} {
     }
     return $result
 }
-proc ::NewBoard::_Create {size {seed ?}} {
+proc ::NewBoard::_Create {size seed withBlobs} {
     variable newBoard
 
     if {$seed eq "?"} {
@@ -143,21 +148,21 @@ proc ::NewBoard::_Create {size {seed ?}} {
     set density [expr {int(rand() * 30) + 20}]
     set selectedCount [expr {round(($size * $size) * $density / 100.)}]
 
-    ::NewBoard::_BlankBoard $size
+    ::NewBoard::_BlankBoard $size $withBlobs
     ::NewBoard::_Blobify
     ::NewBoard::_PickSelected $selectedCount $size
     ::NewBoard::_FillAllCells
     ::NewBoard::_FixDeadlyPatterns
     ::NewBoard::_ComputeSums
 }
-proc ::NewBoard::_BlankBoard {size} {
+proc ::NewBoard::_BlankBoard {size withBlobs} {
     variable newBoard
     variable selected {}
 
     unset -nocomplain newBoard
     set newBoard(size) $size
     set newBoard(indices) [lrange {0 1 2 3 4 5 6 7 8 9 10} 0 $size-1]
-    set newBoard(hasBlobs) False
+    set newBoard(hasBlobs) $withBlobs
 
     foreach row $newBoard(indices) {
         set newBoard(row,$row) 0
@@ -249,13 +254,11 @@ proc ::NewBoard::_CheckForDeadlyPatterns {} {
 proc ::NewBoard::_Blobify {} {
     variable newBoard
 
-    set newBoard(hasBlobs) False
     foreach idx $newBoard(indices) {
         set newBoard(blob,$idx,cells) {}
     }
-    if {! $::NEED_BLOBS} return
+    if {! $newBoard(hasBlobs)} return
 
-    set newBoard(hasBlobs) True
     set blobs [::Blobs::Create $newBoard(size)]
     foreach idx $newBoard(indices) {
         set newBoard(blob,$idx,cells) [dict get $blobs blob,$idx,cells]
@@ -366,7 +369,7 @@ proc ::NewBoard::FromFile {fname} {
         return 0
     }
 
-    ::NewBoard::_BlankBoard $size
+    ::NewBoard::_BlankBoard $size False
     # Extract slice sums
     foreach idx $newBoard(indices) {
         set newBoard(row,$idx) [lindex $lines $idx+1 0]

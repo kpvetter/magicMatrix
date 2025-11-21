@@ -20,12 +20,10 @@ namespace eval ::Solve {
     variable solution
 }
 
-proc ::Solve::IsSolvable {_BRD {debugging False}} {
+proc ::Solve::IsSolvable {_BRD} {
     # Returns 0 if unsolvable otherwise # of passes required to solve it
     global solvingPasses
     upvar 1 $_BRD BRD
-
-    if {! $debugging} { return True }
 
     set XBRD [dict create {*}[array get BRD]]
     set XBRD [::Solve::_NeuterBoard $XBRD]
