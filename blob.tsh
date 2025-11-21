@@ -12,18 +12,6 @@ exec tclsh $0 ${1+"$@"}
 namespace eval ::Blobs {
     variable CELL_EMPTY "-"
 }
-proc ::Blobs::XBlobs {size} {
-    set board [::Blobs::_CreateEmptyBoard $size]
-    foreach row [dict get $board indices] {
-        set cell [list $row $row]
-        dict lappend board blob,0,cells $cell
-
-        set col [expr {[dict get $board size] - 1 - $row}]
-        set cell [list $row $col]
-        dict lappend board blob,1,cells $cell
-    }
-    return $board
-}
 proc ::Blobs::Create {size} {
     global blobPasses
     set blobPasses 0
@@ -264,6 +252,19 @@ proc ::Blobs::_DecodeBoard {data} {
     }
     return $board
 }
+proc ::Blobs::XBlobs {size} {
+    set board [::Blobs::_CreateEmptyBoard $size]
+    foreach row [dict get $board indices] {
+        set cell [list $row $row]
+        dict lappend board blob,0,cells $cell
+
+        set col [expr {[dict get $board size] - 1 - $row}]
+        set cell [list $row $col]
+        dict lappend board blob,1,cells $cell
+    }
+    return $board
+}
+
 ################################################################
 proc Shuffle {myList} {
     set len [llength $myList]
