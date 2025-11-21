@@ -56,6 +56,7 @@ proc ::NewBoard::Info {} {
 
     set result {}
     lappend result size $newBoard(size) seed $seed
+    lappend result withBlobs $newBoard(hasBlobs)
     lappend result createAttempts $createAttempts solvingPasses [llength $solvingPasses]
     if {$newBoard(hasBlobs)} {
         lappend result blobPasses $blobPasses
@@ -102,8 +103,12 @@ proc ::NewBoard::Debug {{python False}} {
 
     set result ""
     if {! $python} {
+        set bsize "$newBoard(size)x$newBoard(size)"
+        if {$newBoard(hasBlobs)} { append bsize " 3D" }
+        append result "StartGame \"$bsize\" $seed\n\n"
         append result "set size $newBoard(size)\n"
         append result "set seed $seed\n"
+        append result "set withBlobs $newBoard(hasBlobs)\n"
         append result "set solution {[::NewBoard::GetSolution]}\n"
         append result "set BB {\n"
         set line "    {xx"

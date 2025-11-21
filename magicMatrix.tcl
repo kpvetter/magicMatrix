@@ -10,6 +10,7 @@ exit
 #
 #
 # TODO:
+#  hints on blobs don't look like hints on row/col
 #  mode with punishes guesses -- bark if not forced
 #  check starting size w/ screensize
 #  show size/seed and create board with size/seed
@@ -1480,7 +1481,7 @@ proc ::Settings::Settings {} {
         set w $WFRAME.rb_$size
         set text $size
         ::ttk::checkbutton $w -variable ::Settings::BOARD_SIZES($text) -text $text
-        bind $w <$::S(button,right)> [list StartGame [lindex $size 0]]
+        bind $w <$::S(button,right)> [list StartGame $size]
         grid $w -row $row -column $col -sticky w
         if {[incr col] >= $num_columns} {
             incr row
@@ -1865,6 +1866,9 @@ if {0} {
     set size 7
     set seed 2767297063
     StartGame $size $seed
+
+    StartGame "9x9 3D" 3064843537
+
 }
 proc blob {{fname puzzles/color_1.txt}} {
     StartGame ? ? $fname
@@ -1887,4 +1891,23 @@ set BB {
     {10  5  4  3  5  7  9  1  4  2}
     {33  2  6  5  4  9  8  9  4  6}
     {17  8  1  9  3  4  3  3  6  3}
+}
+
+
+bug: after FIRST PASS then FORCED, blob #3 didn't display as cyan
+DOESN'T REPRODUCE :(
+
+set size 4
+set seed 2783733461
+set solution {0,0 0,0 0,0 1,3 1,1 1,3 2,2 0,2 2,0 3,3 3,3 3,1}
+set BB {
+    {xx  9  4 13  8}
+    {12  8  2  4  4}
+    { 5  3  2  4  3}
+    {10  1  2  9  7}
+    { 7  9  2  9  5}
+    {blob 0 10 {0 0} {1 0} {1 1} {1 2}}
+    {blob 1 7 {0 1} {0 2} {0 3} {1 3}}
+    {blob 2 10 {2 0} {2 1} {3 0} {2 2}}
+    {blob 3 7 {2 3} {3 3} {3 2} {3 1}}
 }
