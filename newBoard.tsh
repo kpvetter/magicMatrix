@@ -21,32 +21,25 @@ proc ::NewBoard::Create {size seed withBlobs} {
     variable newBoard
     global createAttempts
 
-    set extraHard False
-    set threshold 8
+    # bad: set size 9; set seed 3064843536 ; set withBlobs 0
+    # StartGame 9 3064843536
 
-    set hardest -1
-    set hardestSeed ?
+    try {
+        for {set createAttempts 0} {$createAttempts < 100} {incr createAttempts} {
+            if {$createAttempts == 20} {
+                .c itemconfig finished -text "thinking..."
+                update
+            }
+            ::NewBoard::_Create $size $seed $withBlobs
+            set isSolvable [::Solve::IsSolvable ::NewBoard::newBoard]
 
-    for {set createAttempts 1} {$createAttempts <= 100} {incr createAttempts} {
-        ::NewBoard::_Create $size $seed $withBlobs
-        set isSolvable [::Solve::IsSolvable ::NewBoard::newBoard]
-
-        if {! $isSolvable} continue
-        if {! $extraHard} return
-        if {$extraHard && $isSolvable >= $threshold} return
-
-        if {$isSolvable > $hardest} {
-            set hardest $isSolvable ;
-            set hardestSeed $::NewBoard::seed
+            if {$isSolvable} return
         }
+    } finally {
+        .c itemconfig finished -text ""
+        update
     }
-    if {$hardest > -1} {
-        # Couldn't find extraHard board, use hardest found so far
-        ::NewBoard::_Create $size $hardestSeed $withBlobs
-        ::Solve::IsSolvable ::NewBoard::newBoard  ;# Insure ::Solve::GetSolution is correct
-    } else {
-        tk_messageBox -icon warning -message "This puzzle may require guessing"
-    }
+    tk_messageBox -icon warning -message "This puzzle may require guessing"
 }
 proc ::NewBoard::Info {} {
     variable newBoard

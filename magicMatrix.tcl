@@ -252,7 +252,6 @@ proc DrawBoard {size} {
         }
     }
     .c move blob 1 1
-    .c create rect [.c bbox bg] -tag gridFrame -fill {} -outline black -width 3
 
     .c create text $B(center,grid) -tag tagVictory -font $B(font,victory) -fill black \
         -anchor c -justify c
@@ -1899,6 +1898,7 @@ if {0} {
 
     StartGame "9x9 3D" 3064843537
 
+    StartGame 8x8-3D 3225747259
 }
 proc blob {{fname puzzles/color_1.txt}} {
     StartGame ? ? $fname
