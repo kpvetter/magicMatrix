@@ -192,15 +192,13 @@ proc ::Solve::_GetSliceData {XBRD sliceType whichSlice} {
 
     set selectedSum 0
     set unselectedCells {}
-    foreach index [dict get $XBRD indices] {
-        if {$sliceType eq "row"} {
-            set cell [dict get $XBRD $whichSlice,$index]
-        } elseif {$sliceType eq "col"} {
-            set cell [dict get $XBRD $index,$whichSlice]
-        } else {
-            lassign [lindex [dict get $XBRD blob,$whichSlice,cells] $index] row col
-            set cell [dict get $XBRD $row,$col]
-        }
+    set all_coords [GetAllCellsForSliceDICT $XBRD $sliceType $whichSlice]
+    set index -1
+    foreach coords $all_coords {
+        incr index
+
+        lassign $coords row col
+        set cell [dict get $XBRD $row,$col]
         lassign $cell value state
         if {$state eq "select"} {
             incr selectedSum $value

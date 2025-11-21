@@ -11,16 +11,14 @@ exit
 #
 # TODO:
 #  hints on blobs don't look like hints on row/col
+#     hints on blobs don't show deleted unicode character
 #  mode with punishes guesses -- bark if not forced
 #  check starting size w/ screensize
 #  show size/seed and create board with size/seed
-#  hide targets when they're at 0
 #  disable undo in cutthroat mode
 #  remove free play???
 #  remove undo button in cutthroat && disable ctrl-Z
 #  put target sum in bottom corner
-#  hints on blobs don't show deleted unicode character
-#  select circles sometimes are above blob sum
 #
 #  auto solve
 #  animation
@@ -32,8 +30,6 @@ exit
 #  select/kill only work on "normal" digits???
 #  if size > X, then insure one slice has only 1 selected digit
 #  newBoard and BRD use different format
-#  always provide focus hint
-#  get rid of tagFocus???
 #  interface for reading puzzle from file
 #  interface for restarting
 
@@ -157,22 +153,27 @@ proc DrawBoard {size} {
     lassign [GridXY $size $size] _ grid_y1 _ _ _ _
 
     # Draw the target sums
+    # tagBox : everything in the box
+    # tagBg  : the box itself
+    # tagText : the text in the box
+    # tagHintSelected : hint placed at middle-bottom -- needed in leave-target-alone mode
+    # tagHintUnselected : hint place at upper-right  -- excess
+    # tagArrow : arrow outside grid pointing at box
+
     for {set whichSlice 0} {$whichSlice < $size} {incr whichSlice} {
         set tagBox sum_row_$whichSlice
         set tagBg bg_row_$whichSlice
         set tagText text_row_$whichSlice
         set tagHintSelected hint1_row_$whichSlice
         set tagHintUnselected hint2_row_$whichSlice
-        set tagFocus focus_row_$whichSlice
         set tagArrow arrow_row_$whichSlice
 
         lassign [GridSumsXY row $whichSlice] x0 y0 x1 y1 x y
         set x1a [expr {$x1 - 5}]
-        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list bg2 $tagBox $tagBg] -fill $COLOR(TSTATE_NORMAL) -outline black -width 2
+        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list $tagBox $tagBg] -fill $COLOR(TSTATE_NORMAL) -outline black -width 2
         .c create text $x $y -tag [list $tagBox $tagText] -font $B(font,sums) -anchor c -text 13
         .c create text $x1a $y0 -tag [list $tagBox $tagHintUnselected] -font $B(font,hints) -anchor ne
         .c create text $x $y1 -tag [list $tagBox $tagHintSelected] -font $B(font,hints) -anchor s
-        .c create text $x0 $y0 -tag [list $tagBox $tagFocus focus] -font $B(font,active) -anchor nw
         .c create line 0 $y $x0 $y -tag [list $tagArrow arrow] -arrow last \
             -fill $COLOR(bg) -width $B(arrow,width) -arrowshape $B(arrow,shape)
 
@@ -187,16 +188,14 @@ proc DrawBoard {size} {
         set tagText text_col_$whichSlice
         set tagHintSelected hint1_col_$whichSlice
         set tagHintUnselected hint2_col_$whichSlice
-        set tagFocus focus_col_$whichSlice
         set tagArrow arrow_col_$whichSlice
 
         lassign [GridSumsXY column $whichSlice] x0 y0 x1 y1 x y
         set x1a [expr {$x1 - 5}]
-        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list bg2 $tagBox $tagBg] -fill $COLOR(TSTATE_NORMAL) -outline black -width 2
+        roundRect .c $x0 $y0 $x1 $y1 $radius -tag [list $tagBox $tagBg] -fill $COLOR(TSTATE_NORMAL) -outline black -width 2
         .c create text $x $y -tag [list $tagBox $tagText] -font $B(font,sums) -anchor c -text 13
         .c create text $x1a $y0 -tag [list $tagBox $tagHintUnselected] -font $B(font,hints) -anchor ne
         .c create text $x $y1 -tag [list $tagBox $tagHintSelected] -font $B(font,hints) -anchor s
-        .c create text $x0 $y0 -tag [list $tagBox $tagFocus focus] -font $B(font,active) -anchor nw
         .c create line $x 10000 $x $grid_y1 -tag [list $tagArrow arrow] -arrow last \
             -fill $COLOR(bg) -width $B(arrow,width) -arrowshape $B(arrow,shape)
 
@@ -207,7 +206,15 @@ proc DrawBoard {size} {
         .c bind $tagBox <ButtonRelease-${S(button,right)}> [list ::Hint::Up col $whichSlice]
     }
 
-    # Grid
+    # Draw all grid cells
+    # tagBox : everything except blob stuff
+    # tagBg  : the box itself
+    # tagText : the text in the box
+    # tagCircle : circle showing selected numbers
+    # tagSmall : small text in lower-right showing value of cell when killed
+    # tagBlob : box for the blob
+    # tagBlobText : text for the blob
+
     for {set row 0} {$row < $size} {incr row} {
         for {set col 0} {$col < $size} {incr col} {
             set tagBox grid_${row}_$col
@@ -234,8 +241,9 @@ proc DrawBoard {size} {
             .c create text $xx1 $y1 -tag [list $tagBox $tagSmall] -font $B(font,hints) -anchor se \
                 -fill $COLOR(small)
             .c lower $tagSmall $tagBox
+
             .c create rect $x0 $y0 $blobX1 $blobY1 -tag [list blob blobBox $tagBlob] -outline ""
-            .c create text $blobX $blobY -tag [list blob blobText $tagBlobText] -font $B(font,blob)
+            .c create text $blobX $blobY -tag [list blob $tagBlobText] -font $B(font,blob)
 
             .c bind $tagBox <ButtonRelease-1> [list ButtonAction "select" $row $col]
             .c bind $tagBox <ButtonRelease-${S(button,right)}> [list ButtonAction "kill" $row $col]
@@ -244,6 +252,7 @@ proc DrawBoard {size} {
         }
     }
     .c move blob 1 1
+    .c create rect [.c bbox bg] -tag gridFrame -fill {} -outline black -width 3
 
     .c create text $B(center,grid) -tag tagVictory -font $B(font,victory) -fill black \
         -anchor c -justify c
@@ -366,6 +375,8 @@ proc DoAllForced {} {
     foreach sliceType {row col blob} {
         if {$sliceType eq "blob" && ! $BRD(hasBlobs)} break
         foreach whichSlice $BRD(indices) {
+            if {$sliceType eq "blob" && $BRD($sliceType,$whichSlice,cells) eq ""} break
+
             lassign $BRD($sliceType,$whichSlice,meta) target selectedTotal needed unselectedTotal
             if {$unselectedTotal == 0} continue
             if {$needed == 0 || $needed == $unselectedTotal} {
@@ -496,18 +507,17 @@ proc UpdateBoard {newState row col} {
 
     _ComputeHint row $row
     _ComputeHint col $col
-    if {$BRD(hasBlobs)} {
-        set blobId [CellToBlob BRD $row $col]
+    set blobId [CellToBlob BRD $row $col]
+    if {$blobId ne ""} {
         _ComputeHint blob $blobId
     }
-
     return $oldState
 }
 proc UpdateSumDisplay {row col} {
     global COLOR
 
     foreach sliceType {row col blob} whichSlice [list $row $col [CellToBlob ::BRD $row $col]] {
-        if {$sliceType eq "blob" && ! $::BRD(hasBlobs)} break
+        if {$whichSlice eq ""} break
 
         set tstate [GetSumCellState $sliceType $whichSlice]
         set color $COLOR(TSTATE_NORMAL)
@@ -606,12 +616,14 @@ proc CellToBlob {_BRD row col} {
             return $id
         }
     }
-    error "cannot find blob for $row,$col"
+    return ""
+    error "ERROR: cannot find blob for $row,$col"
 }
 proc GetCellBackground {row col} {
     global BRD COLOR
-    if {! $BRD(hasBlobs)} { return $COLOR(grid) }
     set blobId [CellToBlob ::BRD $row $col]
+    if {$blobId eq ""} { return $COLOR(grid) }
+
     set state [GetSumCellState blob $blobId]
     if {$state eq "TSTATE_DONE"} { return $COLOR(blobs,cleared) }
     return $BRD(blob,$blobId,color)
@@ -757,12 +769,18 @@ proc roundRect { w x0 y0 x3 y3 radius args } {
     lappend cmd -smooth 1
     return [eval $cmd $args]
 }
-proc FillInBlobs {} {
-    global BB BRD
+proc FillInBlobs {boardData} {
+    global BRD
+
+    foreach whichSlice $BRD(indices) {
+        set BRD(blob,$whichSlice) 0
+        set BRD(blob,$whichSlice,cells) {}
+    }
 
     set BRD(hasBlobs) False
     set ::COLOR(blobs) [Shuffle $::COLOR(blobs)]
-    foreach line $BB {
+
+    foreach line $boardData {
         if {! [string match blob* $line]} continue
 
         set BRD(hasBlobs) True
@@ -772,12 +790,6 @@ proc FillInBlobs {} {
         set BRD(blob,$id,color) [lindex $::COLOR(blobs) $id]
         set BRD(blob,$id,active) 1
     }
-    if {! $BRD(hasBlobs)} {
-        foreach whichSlice $BRD(indices) {
-            set BRD(blob,$whichSlice) 0
-            set BRD(blob,$whichSlice,cells) {}
-        }
-    }
 }
 proc ColorizeBlobs {} {
     global BRD S
@@ -785,6 +797,8 @@ proc ColorizeBlobs {} {
     if {! $BRD(hasBlobs)} return
 
     foreach id $BRD(indices) {
+        if {$BRD(blob,$id,cells) eq {}} continue
+
         lassign [lindex $BRD(blob,$id,cells) 0] row col
         set tagBlob blob_${row}_$col
         set tagBlobText btext_${row}_$col
@@ -799,7 +813,6 @@ proc ColorizeBlobs {} {
         .c addtag $tagText withtag $tagBlobText
         .c addtag $tagBlobBox withtag $tagBlobText
 
-        # .c bind $tagBlobBox <Button-${::S(button,right)}> [list puts "KPV: ::Hint::Down blob $id False"]
         .c bind $tagBlobBox <Button-${S(button,right)}> [list ::Hint::Down blob $id False]
         .c bind $tagBlobBox <Button-${S(button,middle)}> [list ::Hint::Down blob $id True]
         .c bind $tagBlobBox <ButtonRelease-${S(button,middle)}> [list ::Hint::Up blob $id]
@@ -815,11 +828,12 @@ proc ColorizeBlobs {} {
 }
 proc PaintBlobRC {row col} {
     set blobId [CellToBlob ::BRD $row $col]
-    PaintBlob $blobId
+    if {$blobId ne ""} {
+        PaintBlob $blobId
+    }
 }
 proc PaintBlob {blobId} {
     global BRD COLOR
-    if {! $BRD(hasBlobs)} return
 
     set state [GetSumCellState blob $blobId]
     set color [expr {$state eq "TSTATE_DONE" ? $COLOR(grid) : $BRD(blob,$blobId,color)}]
@@ -831,9 +845,8 @@ proc PaintBlob {blobId} {
         .c itemconfig $tag -fill $color
     }
 }
-proc FillInBoard {size} {
-    # TODO: change BB
-    global BB BRD
+proc FillInBoard {size boardData} {
+    global BRD
 
     unset -nocomplain BRD
 
@@ -845,7 +858,7 @@ proc FillInBoard {size} {
         foreach col $BRD(indices) {
             set tagText text_${row}_$col
             set tagSmall small_${row}_$col
-            set value [lindex $BB $row+1 $col+1]
+            set value [lindex $boardData $row+1 $col+1]
             set BRD($row,$col) [list $value normal]
 
             .c itemconfig $tagText -text $value
@@ -856,12 +869,12 @@ proc FillInBoard {size} {
     # Fill in the target sums
     foreach whichSlice $BRD(indices) {
         set tagText text_col_$whichSlice
-        set BRD(col,$whichSlice) [lindex $BB 0 $whichSlice+1]
+        set BRD(col,$whichSlice) [lindex $boardData 0 $whichSlice+1]
         .c itemconfig $tagText -text $BRD(col,$whichSlice)
         _ComputeHint col $whichSlice
 
         set tagText text_row_$whichSlice
-        set BRD(row,$whichSlice) [lindex $BB $whichSlice+1 0]
+        set BRD(row,$whichSlice) [lindex $boardData $whichSlice+1 0]
         .c itemconfig $tagText -text $BRD(row,$whichSlice)
         _ComputeHint row $whichSlice
     }
@@ -964,20 +977,20 @@ proc HighlightHints {sliceType whichSlice needed excess} {
     if {! $::Settings::HINTS(partial)} {
         .c itemconfig $tagHintSelected -text ""
         .c itemconfig $tagHintUnselected -text ""
-        if {$::Settings::HINTS(countdown)} {
+        if {$::Settings::HINTS(target,countdown)} {
             CounterAnimation $tagText $hintSelected
         }
     } else {
-        if {$::Settings::HINTS(countdown)} {
+        if {$::Settings::HINTS(target,countdown)} {
             .c itemconfig $tagHintSelected -text ""
             CounterAnimation $tagText $hintSelected
             CounterAnimation $tagHintUnselected $hintUnselected
         } else {
+            # Don't countdown text but show needed in the hint1 location
             CounterAnimation $tagHintSelected $hintSelected
             CounterAnimation $tagHintUnselected $hintUnselected
         }
     }
-    .c itemconfig focus -text ""
     .c itemconfig arrow -fill $::COLOR(bg)
 }
 proc CounterAnimation {tag last} {
@@ -1126,20 +1139,20 @@ proc StartGame {{sizeOverride ?} {seed ?} {fname ?}} {
         ::NewBoard::Create $size $seed $withBlobs
     }
 
-    set BB [::NewBoard::GetBoard]
 
     Restart
 }
 proc Restart {} {
-    global BRD BB
+    global BRD
 
+    set boardData [::NewBoard::GetBoard]
     ::Victory::Stop all
     ::Explode::Stop
 
-    set size [expr {[llength [lindex $BB 0]] - 1}]
+    set size [expr {[llength [lindex $boardData 0]] - 1}]
     DrawBoard $size
-    FillInBoard $size
-    FillInBlobs
+    FillInBoard $size $boardData
+    FillInBlobs $boardData
     ColorizeBlobs
     foreach idx $BRD(indices) {
         UpdateSumDisplay $idx $idx
@@ -1366,6 +1379,7 @@ namespace eval ::Settings {
                 set unwanted [expr {$how ? {} : $BOARD_SIZES(all)}]
             } elseif {$how eq "default"} {
                 set unwanted {"2x2" "3x3" "2x2 3D" "3x3 3D" "4x4 3D" "5x5 3D"}
+                set unwanted {"2x2" "3x3" "2x2 3D" "3x3 3D"}
             } elseif {$how eq "3Doff"} {
                 set unwanted {"2x2 3D" "3x3 3D" "4x4 3D" "5x5 3D" "6x6 3D" "7x7 3D" "8x8 3D" "9x9 3D"}
             } elseif {$how eq "3Don"} {
@@ -1382,12 +1396,18 @@ namespace eval ::Settings {
             error "unknown option: $who"
         }
     }
+    "proc" PlaceWindow {master slave} {
+        set cnt [scan [wm geom $master] "%dx%d+%d+%d" width height left top]
+        if {$cnt != 4} return
+        set newLeft [expr {$left + $width + 20}]
+        wm geom $slave +$newLeft+$top
+    }
 
     unset -nocomplain HINTS
     AllOnOff sizes default
     AllOnOff hints 1
     set HINTS(explode) 1
-    set HINTS(countdown) 1
+    set HINTS(target,countdown) 1
 }
 
 proc ::Settings::Settings {} {
@@ -1402,6 +1422,7 @@ proc ::Settings::Settings {} {
     toplevel .settings
 
     wm title .settings "$S(title) Settings"
+    ::Settings::PlaceWindow . .settings
 
     global WHINTS WSIZE
     set WTOP .settings.f.top
@@ -1811,6 +1832,15 @@ proc ::Explode::Stop {{who *}} {
             .c delete $tag
             .c raise circle_${row}_$col
             .c raise text_${row}_$col
+            set blobId [CellToBlob ::BRD $row $col]
+            if {$blobId ne ""} {
+                # Don't raise blob over circle if blob is done
+                set state [GetSumCellState blob $blobId]
+                if {$state ne "TSTATE_DONE"} {
+                    .c raise blob_${row}_$col
+                    .c raise btext_${row}_$col
+                }
+            }
         } else {
             lassign [split $tag "_"] _ row col
             set color [GetCellBackground $row $col]

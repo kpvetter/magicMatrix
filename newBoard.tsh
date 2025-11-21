@@ -14,6 +14,7 @@ namespace eval NewBoard {
     variable newBoard
     variable selected {}
     variable seed
+    variable XMODE False
 }
 
 proc ::NewBoard::Create {size seed withBlobs} {
@@ -162,7 +163,8 @@ proc ::NewBoard::_Create {size seed withBlobs} {
 }
 proc ::NewBoard::_BlankBoard {size withBlobs} {
     variable newBoard
-    variable selected {}
+    variable selected
+    set selected {}
 
     unset -nocomplain newBoard
     set newBoard(size) $size
@@ -182,12 +184,13 @@ proc ::NewBoard::_BlankBoard {size withBlobs} {
 }
 proc ::NewBoard::_PickSelected {selectedCount size} {
     variable newBoard
-    variable selected {}
+    variable selected
+    set selected {}
 
     # Make sure each row/col slice has a selected element
-    foreach whichSlice $newBoard(indices) {
-        foreach sliceType {row col blob} {
-            if {$sliceType eq "blob" && ! $newBoard(hasBlobs)} continue
+    foreach sliceType {row col blob} {
+        foreach whichSlice $newBoard(indices) {
+            if {$sliceType eq "blob" && $newBoard(blob,$whichSlice,cells) eq ""} continue
             set cells [GetAllCellsForSlice ::NewBoard::newBoard $sliceType $whichSlice]
             set pick [lpick $cells]
             lassign $pick row col
@@ -264,7 +267,12 @@ proc ::NewBoard::_Blobify {} {
     }
     if {! $newBoard(hasBlobs)} return
 
-    set blobs [::Blobs::Create $newBoard(size)]
+    if {$::NewBoard::XMODE} {
+        set blobs [::Blobs::XBlobs $newBoard(size)]
+    } else {
+        set blobs [::Blobs::Create $newBoard(size)]
+    }
+
     foreach idx $newBoard(indices) {
         set newBoard(blob,$idx,cells) [dict get $blobs blob,$idx,cells]
     }
@@ -406,26 +414,6 @@ proc ::NewBoard::FromFile {fname} {
         set selected [::Solve::GetSolution]
     }
     return $isSolvable
-
-
-
-    # # Check for being able to find a solution
-    # unset -nocomplain XBRD
-    # array set XBRD [array get newBoard]
-    # foreach row $newBoard(indices) {
-    #     foreach col $newBoard(indices) {
-    #         set XBRD($row,$col) [list $XBRD($row,$col) normal]
-    #     }
-    # }
-    # set isSolvable [::Solve::IsSolvable XBRD]
-    # if {$isSolvable} {
-    #     foreach cell [::Solve::GetSolution] {
-    #         lassign $cell row col
-    #         set solution($row,$col) 1
-    #     }
-    # }
-
-    # return $isSolvable
 }
 proc ::NewBoard::_ValidateFileData {lines} {
     set rows [llength $lines]
