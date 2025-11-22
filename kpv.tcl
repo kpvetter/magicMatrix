@@ -28,7 +28,31 @@ namespace eval ::KPV {
     variable messages ""
 
 }
-proc ::KPV::Layout {{size ?}} {
+proc ::KPV::Blob {size} {
+    variable KBRD
+    variable KTOP
+    variable currentBlob
+    variable blobSelected
+
+    ::KPV::_Layout $size
+
+    set currentBlob 0
+
+    array unset KBRD blob,*,cells
+    set blobSelected {}
+
+    foreach row $KBRD(indices) {
+        set KBRD(blob,$row,cells) {}
+        foreach col $KBRD(indices) {
+            set w $KTOP.$row,$col
+            bind $w <Shift-Button-1> [list ::KPV::_MouseDownBlob $row $col]
+            bind $w <Shift-Button-$::S(button,right)> [list ::KPV::_MouseDownUnBlob $row $col]
+
+            bind $w <Shift-Button-$::S(button,right)> [list ::KPV::_MouseDownSelect $w $row $col]
+        }
+    }
+}
+proc ::KPV::_Layout {{size ?}} {
     variable KBRD
     variable KTOP
 
@@ -51,9 +75,8 @@ proc ::KPV::Layout {{size ?}} {
     foreach col $KBRD(indices) {
         set w $KTOP.col,$col
         entry $w -textvariable ::KPV::KBRD(col,$col) -width 2 -justify c -bd 4 -relief flat -exportselection 0
-        # bind $w <Key-space> [list event generate $w <<NextWindow>> ]
         bindtags $w [list Entry $w all]
-        bind $w <Key> [list ::KPV::KeyBinding $w col $col %K]
+        bind $w <Key> [list ::KPV::_KeyBinding $w col $col %K]
 
         grid $w -row $grow -column $gcol -pady {0 .1i}
         incr gcol
@@ -67,7 +90,7 @@ proc ::KPV::Layout {{size ?}} {
         grid $w -row $grow -column $gcol -padx {0 .1i}
 
         bindtags $w [list Entry $w all]
-        bind $w <Key> [list ::KPV::KeyBinding $w row $row %K]
+        bind $w <Key> [list ::KPV::_KeyBinding $w row $row %K]
 
         foreach col $KBRD(indices) {
             incr gcol
@@ -76,17 +99,23 @@ proc ::KPV::Layout {{size ?}} {
             grid $w -row $grow -column $gcol
 
             bindtags $w [list Entry $w all]
-            bind $w <Key> [list ::KPV::KeyBinding $w $row $col %K]
+            bind $w <Key> [list ::KPV::_KeyBinding $w $row $col %K]
         }
     }
     ::ttk::frame $KTOP.blobsums
     grid $KTOP.blobsums -row 100 -columnspan $size2 -pady {.2i 0}
 
-    label $KTOP.blobsums.m1 -text "Current blob #0"
+    set color [lindex $::COLOR(blobs) 0]
+    label $KTOP.blobsums.m1 -text "Current blob #0" -bg $color
+
     grid $KTOP.blobsums.m1 -columnspan $size -sticky ew -row 101
     foreach id $KBRD(indices) {
         set w $KTOP.blobsums.bs$id
+        set color [lindex $::COLOR(blobs) $id]
+
+        unset -nocomplain ::KPV::KBRD(blob,$id)
         entry $w -textvariable ::KPV::KBRD(blob,$id) -width 2 -justify c -exportselection 0
+        $w config -bg $color
         grid $w -row 102 -column $id
     }
 
@@ -97,15 +126,18 @@ proc ::KPV::Layout {{size ?}} {
     label $KTOP.msgs -textvariable ::KPV::messages -height 2
     grid $KTOP.msgs -in $KTOP.bottom -columnspan 2 -sticky ew
 
-    ::ttk::button $KTOP.sums -text "Compute Sums" -command ::KPV::ComputeSums
+    ::ttk::button $KTOP.sums -text "Compute Sums" -command ::KPV::_ComputeSums
     grid $KTOP.sums -in $KTOP.bottom -columnspan 2 -sticky ew
 
-    ::ttk::button $KTOP.data -text "Copy to Clipboard" -command ::KPV::GetBoard
+    ::ttk::button $KTOP.data -text "Copy to Clipboard" -command ::KPV::_ClipData
     grid $KTOP.data -in $KTOP.bottom -columnspan 2 -sticky ew
+
+    ::ttk::button $KTOP.file -text "Save to File" -command ::KPV::_Save
+    grid $KTOP.file -in $KTOP.bottom -columnspan 2 -sticky ew
 
     ::tk::TabToWindow $KTOP.col,0
 }
-proc ::KPV::KeyBinding {w row col key} {
+proc ::KPV::_KeyBinding {w row col key} {
     # Handle key presses in our matrix
     #  * arrow keys move up down left and right
     #  * single digits entry
@@ -114,8 +146,8 @@ proc ::KPV::KeyBinding {w row col key} {
     if {$key eq "space"} {
         event generate $w <<NextWindow>>
     }
-    if {$key in {1 2 3 4 5 6 7 8 9}} {
-        if {[string is integer -strict $row]} {
+    if {$key in {0 1 2 3 4 5 6 7 8 9}} {
+        if {$row ni {"row" "col"}} {
             event generate $w <<NextWindow>>
             return
         }
@@ -125,6 +157,8 @@ proc ::KPV::KeyBinding {w row col key} {
         }
         return
     }
+
+    # Handle arrow keys
     array set DRC {
         "Up" {-1 0}
         "Down" {1 0}
@@ -170,7 +204,24 @@ proc ::KPV::KeyBinding {w row col key} {
         ::tk::TabToWindow $w2
     }
 }
-proc ::KPV::GetBoard {} {
+proc ::KPV::_Save {} {
+    variable KTOP
+    set fname [tk_getSaveFile -message "Select file to save to" -parent $KTOP \
+                   -title "Save Board" -initialdir [pwd]]
+    if {$fname eq {}} return
+    set result [::KPV::_GetBoardData]
+    set fout [open $fname "w"]
+    puts $fout $result
+    close $fout
+
+}
+proc ::KPV::_ClipData {} {
+    set result [::KPV::_GetBoardData]
+    clipboard clear
+    clipboard append $result
+    return $result
+}
+proc ::KPV::_GetBoardData {} {
     variable KBRD
     variable blobSelected
 
@@ -198,37 +249,9 @@ proc ::KPV::GetBoard {} {
         set line "blob $KBRD(blob,$id) $KBRD(blob,$id,cells)\n"
         append result $line
     }
-
-    clipboard clear
-    clipboard append $result
     return $result
 }
-proc ::KPV::Blob {size} {
-    variable KBRD
-    variable KTOP
-    variable currentBlob
-    variable blobSelected
-
-    ::KPV::Layout $size
-
-    set currentBlob 0
-    ::KPV::ChangeCurrentBlob $currentBlob
-
-    array unset KBRD blob,*,cells
-    set blobSelected {}
-
-    foreach row $KBRD(indices) {
-        set KBRD(blob,$row) 0
-        set KBRD(blob,$row,cells) {}
-        foreach col $KBRD(indices) {
-            set w $KTOP.$row,$col
-            bind $w <Shift-Button-1> [list ::KPV::MouseDownBlob $row $col]
-            bind $w <Shift-Button-$::S(button,right)> [list ::KPV::MouseDownUnBlob $row $col]
-            # bind $w <Shift-Button-$::S(button,right)> [list ::KPV::MouseDownSelect $w $row $col]
-        }
-    }
-}
-proc ::KPV::MouseDownSelect {w row col} {
+proc ::KPV::_MouseDownSelect {w row col} {
     variable blobSelected
 
     set cell [list $row $col]
@@ -241,7 +264,7 @@ proc ::KPV::MouseDownSelect {w row col} {
         $w config -relief flat
     }
 }
-proc ::KPV::MouseDownUnBlob {row col} {
+proc ::KPV::_MouseDownUnBlob {row col} {
     variable KBRD
     variable KTOP
     variable messages
@@ -260,7 +283,7 @@ proc ::KPV::MouseDownUnBlob {row col} {
         return
     }
 }
-proc ::KPV::MouseDownBlob {row col} {
+proc ::KPV::_MouseDownBlob {row col} {
     variable KBRD
     variable KTOP
     variable currentBlob
@@ -291,29 +314,20 @@ proc ::KPV::MouseDownBlob {row col} {
 
     incr currentBlob
     if {$currentBlob >= $KBRD(size)} {
-        ::KPV::GetBoard
-        set messages "board copied\nto clipboard"
         set currentBlob 0
     }
-    ::KPV::ChangeCurrentBlob $currentBlob
+    ::KPV::_ChangeCurrentBlob $currentBlob
 }
-proc ::KPV::ChangeCurrentBlob {whichBlob} {
+proc ::KPV::_ChangeCurrentBlob {whichBlob} {
     variable KTOP
-    variable KBRD
 
     set color [lindex $::COLOR(blobs) $whichBlob]
     $KTOP.blobsums.m1 config -bg $color -text "Current Blob #$whichBlob"
 
-    set bg [lindex [$KTOP.blobsums.bs0 config -bg] 3]
-    foreach id $KBRD(indices) {
-        $KTOP.blobsums.bs$id config -bg $bg
-    }
-    if {$whichBlob < $KBRD(size)} {
-        $KTOP.blobsums.bs$whichBlob config -bg $color
-    }
-
+    focus $KTOP.blobsums.bs$whichBlob
+    $KTOP.blobsums.bs$whichBlob selection range 0 end
 }
-proc ::KPV::GetCellsInSlice {sliceType whichSlice} {
+proc ::KPV::_GetCellsInSlice {sliceType whichSlice} {
     variable KBRD
 
     if {$sliceType eq "row"} {
@@ -326,7 +340,7 @@ proc ::KPV::GetCellsInSlice {sliceType whichSlice} {
 
 
 }
-proc ::KPV::ComputeSums {} {
+proc ::KPV::_ComputeSums {} {
     variable KBRD
     variable blobSelected
     variable messages
@@ -339,103 +353,17 @@ proc ::KPV::ComputeSums {} {
     foreach sliceType {"row" "col" "blob"} {
         foreach whichSlice $KBRD(indices) {
             set KBRD($sliceType,$whichSlice) 0
-            foreach cell [::KPV::GetCellsInSlice $sliceType $whichSlice] {
+            foreach cell [::KPV::_GetCellsInSlice $sliceType $whichSlice] {
                 if {$cell in $blobSelected} {
                     lassign $cell row col
                     incr KBRD($sliceType,$whichSlice) $KBRD($row,$col)
                 }
             }
-            puts "KPV: KBRD($sliceType,$whichSlice) -> $KBRD($sliceType,$whichSlice)"
         }
     }
 }
 
-# proc ::KPV::xBlob {{action init} {row ?} {col ?}} {
-#     # Manual way to create blobs for an existing board
-#     #   % ::KPV::Blob init
-#     #   left click to form blobs (it will detect when to start new blob)
-#     #   % ::KPV::Blob data -> data for the board
-#     #   manually fill in the blob targets
-#     global BRD
-#     global kpvBlobId
-#     global kpvBlobCells
-#     global kpvBlobTargets
-
-#     if {$action eq "init"} {
-#         destroy .blob
-#         entry .blob -font $::B(font,grid) -width 2 -relief solid -justify c
-#         place .blob -x 50 -y 50 -anchor nw
-
-#         set kpvBlobId -1
-#         array unset kpvBlobCells
-#         array unset kpvBlobTargets
-#         foreach row $BRD(indices) {
-#             set kpvBlobCells($row) {}
-#             foreach col $BRD(indices) {
-#                 set tagBox grid_${row}_$col
-#                 .c bind $tagBox <ButtonRelease-1> \
-#                     [list ::KPV::Blob "add" $row $col]
-#                 if {"$row,$col" in [::NewBoard::GetSolution]} {
-#                     ::Explode::Explode $row $col
-#                 }
-#             }
-#         }
-#         ::KPV::Blob next
-#         return
-#     }
-#     if {$action eq "next"} {
-#         incr kpvBlobId
-#         if {$kpvBlobId < $BRD(size)} {
-#             set kpvBlobTargets($kpvBlobId) $kpvBlobId
-#             if {$BRD(solvable)} {
-#                 set kpvBlobTargets($kpvBlobId) 0
-#             }
-#             .blob config -bg [lindex $::COLOR(blobs) $kpvBlobId]
-#             .blob config -textvariable kpvBlobTargets($kpvBlobId)
-#         } else {
-#             set data [::KPV::Blob data]
-#             clipboard clear ; clipboard append $data
-#             puts $data
-#             puts "KPV: complete board -- data copied to the clipboard"
-#         }
-#         return
-#     }
-#     if {$action eq "data"} {
-#         set result [join $::BB "\n"]
-#         append result "\n\n"
-
-#         foreach id $BRD(indices) {
-#             if {$kpvBlobCells($id) eq {}} continue
-#             set cells [lsort $kpvBlobCells($id)]
-#             set line "blob $kpvBlobTargets($id) $cells\n"
-#             append result $line
-#         }
-#         destroy .blob
-#         return $result
-#     }
-#     if {$action eq "add"} {
-#         set cell [list $row $col]
-#         if {$cell in $kpvBlobCells($kpvBlobId)} {
-#             puts "KPV: duplicate cell $cell"
-#             return
-#         }
-#         lappend kpvBlobCells($kpvBlobId) [list $row $col]
-#         if {"$row,$col" in [::NewBoard::GetSolution]} {
-#             incr kpvBlobTargets($kpvBlobId) [lindex $BRD($row,$col) 0]
-#         }
-
-#         set tagBg bg_${row}_$col
-#         .c itemconfig $tagBg -fill [lindex $::COLOR(blobs) $kpvBlobId]
-#         if {[llength $kpvBlobCells($kpvBlobId)] == $::BRD(size)} {
-#             puts "KPV: blob is full-sized -- moving to next"
-#             ::KPV::Blob next
-#         }
-#         return
-#     }
-#     error "unknown ::KPV::Blob action: '$action'"
-# }
-
-# ::KPV::Layout 8
+# ::KPV::_Layout 8
 
 proc Debug {} {
     array set ::KPV::KBRD {

@@ -55,7 +55,12 @@ proc ::NewBoard::Info {} {
     if {$newBoard(hasBlobs)} {
         lappend result blobPasses $blobPasses
     }
-    return $result
+    set command "StartGame $newBoard(size)x$newBoard(size)"
+    if {$newBoard(hasBlobs)} { append command "-3D" }
+    append command " $seed"
+
+    puts $result
+    return $command
 }
 proc ::NewBoard::GetBoard {} {
     # Returns board created by ::NewBoard::Create as a list of list of ints
@@ -375,11 +380,15 @@ proc ::NewBoard::FromFile {fname} {
         return 0
     }
 
+    set size [expr {[llength $lines] - 1}]
+
     ::NewBoard::_BlankBoard $size False
     # Extract slice sums
     foreach idx $newBoard(indices) {
         set newBoard(row,$idx) [lindex $lines $idx+1 0]
         set newBoard(col,$idx) [lindex $lines 0 $idx+1]
+        set newBoard(blob,$idx) 0
+        set newBoard(blob,$idx,cells) {}
     }
 
     foreach row $newBoard(indices) {
@@ -389,19 +398,16 @@ proc ::NewBoard::FromFile {fname} {
         }
     }
 
-    set newBoard(blobs) {}
     for {set idx 0} {$idx < [llength $blobs]} {incr idx} {
         set bdata [lindex $blobs $idx]
         set cells [lassign $bdata _ target]
         set cells [lsort $cells]
 
-        lappend newBoard(blobs) $idx
         set newBoard(blob,$idx) $target
         set newBoard(blob,$idx,cells) $cells
     }
-    set newBoard(hasBlobs) [expr {$newBlob(blob,0,cells) ne {}}]
+    set newBoard(hasBlobs) [expr {$newBoard(blob,0,cells) ne {}}]
 
-    # KPV TODO check this
     set isSolvable [::Solve::IsSolvable ::NewBoard::newBoard]
     if {$isSolvable > 0} {
         set selected [::Solve::GetSolution]

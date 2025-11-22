@@ -10,8 +10,7 @@ exit
 #
 #
 # TODO:
-#  hints on blobs don't look like hints on row/col
-#     hints on blobs don't show deleted unicode character
+#  bug: undo clearing blob doesn't recolor correctly
 #  mode with punishes guesses -- bark if not forced
 #  check starting size w/ screensize
 #  show size/seed and create board with size/seed
@@ -97,8 +96,8 @@ set COLOR(hintBox) seashell2
 set COLOR(title) brown1
 set COLOR(game,over) gray75
 set COLOR(target,highlight) yellow
-set COLOR(target,highlight,blob) magenta
-set COLOR(blobs,cleared) azure
+set COLOR(target,highlight,blob) yellow
+set COLOR(blobs,cleared) snow
 set COLOR(blobs) {#d95d4c #5a9ee0 #bce5d0 #d54782 #936bf3 #9bbc20 #ca7a18 #e68e7b
     #6e82e7 #f42ad7 #7316f2 #49cadb}
 
@@ -787,7 +786,6 @@ proc FillInBlobs {boardData} {
         set BRD(blob,$id) $target
         set BRD(blob,$id,cells) $cells
         set BRD(blob,$id,color) [lindex $::COLOR(blobs) $id]
-        set BRD(blob,$id,active) 1
     }
 }
 proc ColorizeBlobs {} {
@@ -835,7 +833,7 @@ proc PaintBlob {blobId} {
     global BRD COLOR
 
     set state [GetSumCellState blob $blobId]
-    set color [expr {$state eq "TSTATE_DONE" ? $COLOR(grid) : $BRD(blob,$blobId,color)}]
+    set color [expr {$state eq "TSTATE_DONE" ? $COLOR(blobs,cleared) : $BRD(blob,$blobId,color)}]
 
     set cells [GetAllCellsForSlice BRD blob $blobId]
     foreach cell $cells {
@@ -1761,8 +1759,7 @@ proc ::Explode::Explode {row col} {
     set coords {}
     set tag explode_${row}_$col
 
-    set color [GetCellBackground $row $col]
-    .c create oval [list $x $y $x $y] -tag $tag -fill $color -outline black -width 15
+    .c create oval [list $x $y $x $y] -tag $tag -fill {} -outline black -width 15
     .c raise text_${row}_$col
 
     for {set i 0} {$i < $steps} {incr i} {
@@ -1880,64 +1877,17 @@ DoDisplay
 update
 
 if {0} {
-    set size 8
-    set seed 1028907424
-    StartGame $size $seed
-
-    set size 9
-    set seed 1418909994
-    StartGame $size $seed
-
-    set size 9
-    set seed 4012667637
-    StartGame $size $seed
-
-    set size 7
-    set seed 2767297063
-    StartGame $size $seed
-
+    StartGame 8 1028907424
+    StartGame 9 1418909994
+    StartGame 9 4012667637
+    StartGame 7 2767297063
     StartGame "9x9 3D" 3064843537
-
     StartGame 8x8-3D 3225747259
+    StartGame 9x9-3D 2807008579
 }
-proc blob {{fname puzzles/color_1.txt}} {
-    StartGame ? ? $fname
-}
-StartGame
+
+# StartGame
+set ::Settings::MODE(autoforce) 0
+StartGame 4-3D 1357585250
 
 return
-bug -- no solution
-set size 9
-set seed 3953432577
-set solution {0,3 4,0 1,7 0,1 2,2 3,2 3,5 3,3 4,1 7,4 5,7 8,5 6,4 7,6 7,3 1,7 8,7 2,8 4,3 3,1 8,0 1,1 1,8 7,0 2,4 6,2 1,3 7,7 5,2 7,2 3,4}
-set BB {
-    {xx 13 15 25 25 26  6  9 26  9}
-    {12  3  6  8  6  5  2  8  4  2}
-    {26  4  6  8  5  6  3  2  8  7}
-    {12  2  3  8  8  2  8  7  3  2}
-    {28  7  2  6  9  8  3  8  3  4}
-    { 5  3  1  4  1  3  5  7  9  9}
-    {11  4  3  3  2  2  3  5  8  5}
-    {10  5  4  3  5  7  9  1  4  2}
-    {33  2  6  5  4  9  8  9  4  6}
-    {17  8  1  9  3  4  3  3  6  3}
-}
-
-
-bug: after FIRST PASS then FORCED, blob #3 didn't display as cyan
-DOESN'T REPRODUCE :(
-
-set size 4
-set seed 2783733461
-set solution {0,0 0,0 0,0 1,3 1,1 1,3 2,2 0,2 2,0 3,3 3,3 3,1}
-set BB {
-    {xx  9  4 13  8}
-    {12  8  2  4  4}
-    { 5  3  2  4  3}
-    {10  1  2  9  7}
-    { 7  9  2  9  5}
-    {blob 0 10 {0 0} {1 0} {1 1} {1 2}}
-    {blob 1 7 {0 1} {0 2} {0 3} {1 3}}
-    {blob 2 10 {2 0} {2 1} {3 0} {2 2}}
-    {blob 3 7 {2 3} {3 3} {3 2} {3 1}}
-}
