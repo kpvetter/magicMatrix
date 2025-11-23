@@ -207,6 +207,7 @@ proc DrawBoard {size} {
 
     # Draw all grid cells
     # tagBox : everything except blob stuff
+    # tagBind : just the box that will get highlighted
     # tagBg  : the box itself
     # tagText : the text in the box
     # tagCircle : circle showing selected numbers
@@ -217,6 +218,7 @@ proc DrawBoard {size} {
     for {set row 0} {$row < $size} {incr row} {
         for {set col 0} {$col < $size} {incr col} {
             set tagBox grid_${row}_$col
+            set tagBind $tagBox,box
             set tagBg bg_${row}_$col
             set tagText text_${row}_$col
             set tagCircle circle_${row}_$col
@@ -231,7 +233,7 @@ proc DrawBoard {size} {
             set blobX [expr {$x0 + $B(blobSize) / 2}]
             set blobY [expr {$y0 + $B(blobSize) / 2}]
 
-            .c create rect $x0 $y0 $x1 $y1 -tag [list bg $tagBox $tagBg] -fill $COLOR(grid) \
+            .c create rect $x0 $y0 $x1 $y1 -tag [list bg $tagBox $tagBg $tagBind] -fill $COLOR(grid) \
                 -outline black -width 2
             .c create oval $xx0 $yy0 $xx1 $yy1 -tag [list bg $tagCircle] \
                 -width 3 -fill {} -outline black
@@ -244,10 +246,12 @@ proc DrawBoard {size} {
             .c create rect $x0 $y0 $blobX1 $blobY1 -tag [list blob blobBox $tagBlob] -outline ""
             .c create text $blobX $blobY -tag [list blob $tagBlobText] -font $B(font,blob)
 
-            .c bind $tagBox <ButtonRelease-1> [list ButtonAction "select" $row $col]
-            .c bind $tagBox <ButtonRelease-${S(button,right)}> [list ButtonAction "kill" $row $col]
-            .c bind $tagBox <ButtonRelease-${S(button,middle)}> \
-                [list ButtonAction "normal" $row $col]
+            # .c bind $tagBox <ButtonRelease-1> [list ButtonAction "select" $row $col]
+            # .c bind $tagBox <ButtonRelease-${S(button,right)}> [list ButtonAction "kill" $row $col]
+            # .c bind $tagBox <ButtonRelease-${S(button,middle)}> [list ButtonAction "normal" $row $col]
+            ::MCB::BindAsButton .c $tagBox 1 [list ButtonAction "select" $row $col]
+            ::MCB::BindAsButton .c $tagBox $S(button,right) [list ButtonAction "kill" $row $col]
+            ::MCB::BindAsButton .c $tagBox $S(button,middle) [list ButtonAction "normal" $row $col]
         }
     }
     .c move blob 1 1
@@ -273,6 +277,17 @@ proc DrawBoard {size} {
     .c bind help <1> Help
 
     DrawFancyTitle
+}
+proc HighlightCell {tag onoff} {
+    # Turn on or off cell highlighting when user presses a button down on a cell
+    return
+
+    set boxTag $tag,box
+    if {$onoff} {
+        .c itemconfig $boxTag -width 5
+    } else {
+        .c itemconfig $boxTag -width 2
+    }
 }
 proc DrawFancyTitle {{color ""}} {
     global B COLOR S
@@ -1651,10 +1666,17 @@ proc Help {} {
     T "with an array of slice sums for every row "
     T "and column. The goal is to select some numbers and kill other numbers "
     T "so that the sum of the selected numbers match the slice sum for "
-    T "that row and column.\n\n"
+    T "that row and column.\n"
 
+    T "\n"
+    T "Challenge Mode vs Free Play\n" h2
+    T "In Challenge Mode, playing a wrong move will be highlighted and cost you "
+    T "a life. You fail if you can't solve the puzzle before running out of lives. "
+    T "In Free Play, you can make any move you like and mistakes won't be indicated. "
+    T "You may get into a dead-end trying to solve the puzzle and must undo some moves.\n"
+
+    T "\n"
     T "Game Play\n" h2
-
     Bullet "Clicking on a number will select it (by drawing a circle around it)"
     Bullet "Right clicking on a number will kill it"
     Bullet "Middle clicking on a number will restore it"
@@ -1870,24 +1892,62 @@ proc ::Explode::Gradient {c1 c2 n} {
 
     return $steps
 }
+namespace eval ::MCB {
+    variable Priv
+    set Priv(window) ""
+    set Priv(buttonWindow) ""
+}
+proc ::MCB::BindAsButton {w tag mouseButton cmd} {
+    # My Canvas Button -- proper down, enter, leave and release button semantics
+    variable Priv
+
+    $w bind $tag <Button-$mouseButton> [list ::MCB::ButtonDown %W $tag]
+    $w bind $tag <ButtonRelease-$mouseButton> [list ::MCB::ButtonUp %W $tag $mouseButton]
+    $w bind $tag <Enter> [list ::MCB::ButtonEnter %W $tag]
+    $w bind $tag <Leave> [list ::MCB::ButtonLeave %W $tag]
+    set Priv($w,$tag,$mouseButton,command) $cmd
+}
+
+proc ::MCB::ButtonDown {w tag} {
+    set ::MCB::Priv(buttonWindow) $w
+    HighlightCell $tag True
+}
+proc ::MCB::ButtonLeave {w tag} {
+    if {$w eq $::MCB::Priv(buttonWindow)} {
+        HighlightCell $tag False
+    }
+    set ::MCB::Priv(window) ""
+}
+proc ::MCB::ButtonEnter {w tag} {
+    if {$::MCB::Priv(buttonWindow) eq $w} {
+        HighlightCell $tag True
+    }
+    set ::MCB::Priv(window) $w
+}
+proc ::MCB::ButtonUp {w tag mouseButton} {
+    if {$::MCB::Priv(buttonWindow) ne $w} return
+    set ::MCB::Priv(buttonWindow) ""
+    HighlightCell $tag False
+
+    if {$::MCB::Priv(window) eq $w} {
+        uplevel #0 $::MCB::Priv($w,$tag,$mouseButton,command)
+    }
+}
 
 ################################################################
-
-DoDisplay
-update
 
 if {0} {
     StartGame 8 1028907424
     StartGame 9 1418909994
     StartGame 9 4012667637
     StartGame 7 2767297063
-    StartGame "9x9 3D" 3064843537
+    StartGame 9x9-3D 3064843537
     StartGame 8x8-3D 3225747259
     StartGame 9x9-3D 2807008579
+    StartGame 8x8-3D 2163016927
 }
 
-# StartGame
-set ::Settings::MODE(autoforce) 0
-StartGame 4-3D 1357585250
+DoDisplay
+StartGame
 
 return
