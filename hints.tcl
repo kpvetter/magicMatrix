@@ -107,7 +107,7 @@ proc ::Hint::Cheat {} {
     set who [lpick $candidates]
     lassign $who sliceType whichSlice
     set tagArrow arrow_${sliceType}_$whichSlice
-    .c itemconfig $tagArrow -fill $::COLOR(target,highlight)
+    .c raise $tagArrow
     ::Hint::_Doit $sliceType $whichSlice
 }
 proc ::Hint::PrettyText {sliceType whichSlice maxLines verbose} {
@@ -159,30 +159,30 @@ proc ::Hint::PrettyText {sliceType whichSlice maxLines verbose} {
 }
 proc ::Hint::BestSlice {} {
     global BRD
-    global focus
 
-    .c itemconfig arrow -fill $::COLOR(bg)
+    .c lower arrow
 
-    set focus {}
+    set bestSlices {}
     foreach {k v} [array get BRD *,hint] {
-        # TODO: figure out how to indicate a blob being the best slice
-        if {[string match blob,* $k]} continue
         set raw [string map [list $::MIDDLE_DOT "" \u0336 "" " " ""] $v]
         set count [string length $raw]
         if {$count > 0} {
             lassign [split $k ","] sliceType whichSlice _
-            lappend focus [list $count $sliceType $whichSlice]
+            lappend bestSlices [list $count $sliceType $whichSlice]
         }
     }
-    set focus [lsort -integer -index 0 -decreasing $focus]
+    set bestSlices [lsort -integer -index 0 -decreasing $bestSlices]
+    foreach item $bestSlices {
+        lassign $item count sliceType whichSlice
+        if {$count < [lindex $bestSlices 0 0]} break
 
-    if {$focus ne {}} {
-        foreach item $focus {
-            lassign $item count sliceType whichSlice
-            if {$count < [lindex $focus 0 0]} break
+        if {$sliceType eq "blob"} {
+            lassign [lindex $BRD(blob,$whichSlice,cells) 0] row col
+            set tagArrow arrow_${row}_$col
+        } else {
             set tagArrow arrow_${sliceType}_$whichSlice
-            .c itemconfig $tagArrow -fill $::COLOR(target,highlight)
         }
+        .c raise $tagArrow
     }
 }
 proc ::Hint::IsNullHint {sliceType whichSlice} {
@@ -240,6 +240,7 @@ proc ::Hint::FindBad {} {
 proc ::Hint::QuickPass {} {
     global BRD
 
+    .c lower arrow
     if {! $BRD(active)} return
     set undoItems {}
 
@@ -251,9 +252,9 @@ proc ::Hint::QuickPass {} {
             lappend undoItems normal {*}$cell
         }
         set tag arrow_row_$row
-        .c itemconfig $tag -fill $::COLOR(target,highlight)
+        .c raise $tag
         Pause $highlightPauseMS
-        .c itemconfig $tag -fill $::COLOR(bg)
+        .c lower $tag
     }
 
     foreach col $BRD(indices) {
@@ -263,24 +264,25 @@ proc ::Hint::QuickPass {} {
             lappend undoItems normal {*}$cell
         }
         set tag arrow_col_$col
-        .c itemconfig $tag -fill $::COLOR(target,highlight)
+        .c raise $tag
         Pause $highlightPauseMS
-        .c itemconfig $tag -fill $::COLOR(bg)
+        .c lower $tag
     }
     if {$BRD(hasBlobs)} {
         foreach blob $BRD(indices) {
             lassign [lindex $BRD(blob,$blob,cells) 0] row col
+            set tag blob_${row}_$col
+            set tagBlobArrow arrow_${row}_$col
 
             set cells [::Hint::QuickPassSlice blob $blob]
             foreach cell $cells {
                 MakeMove kill {*}$cell
                 lappend undoItems normal {*}$cell
             }
-            set tag blob_${row}_$col
             set oldColor [.c itemcget $tag -fill]
-            .c itemconfig $tag -fill $::COLOR(target,highlight,blob)
+            .c raise $tagBlobArrow
             Pause $highlightPauseMS
-            .c itemconfig $tag -fill $oldColor
+            .c lower $tagBlobArrow
         }
     }
     ::Undo::PushMoves $undoItems

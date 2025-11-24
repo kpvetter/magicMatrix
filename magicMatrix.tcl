@@ -96,7 +96,6 @@ set COLOR(hintBox) seashell2
 set COLOR(title) brown1
 set COLOR(game,over) gray75
 set COLOR(target,highlight) yellow
-set COLOR(target,highlight,blob) yellow
 set COLOR(blobs,cleared) snow
 set COLOR(blobs) {#d95d4c #5a9ee0 #bce5d0 #d54782 #936bf3 #9bbc20 #ca7a18 #e68e7b
     #6e82e7 #f42ad7 #7316f2 #49cadb}
@@ -148,7 +147,7 @@ proc DrawBoard {size} {
     SetUpBoardParams $size
 
     # Target buttons
-    set radius 10  ;# KPV magic constant
+    set radius 10
     lassign [GridXY $size $size] _ grid_y1 _ _ _ _
 
     # Draw the target sums
@@ -174,7 +173,7 @@ proc DrawBoard {size} {
         .c create text $x1a $y0 -tag [list $tagBox $tagHintUnselected] -font $B(font,hints) -anchor ne
         .c create text $x $y1 -tag [list $tagBox $tagHintSelected] -font $B(font,hints) -anchor s
         .c create line 0 $y $x0 $y -tag [list $tagArrow arrow] -arrow last \
-            -fill $COLOR(bg) -width $B(arrow,width) -arrowshape $B(arrow,shape)
+            -fill $COLOR(target,highlight) -width $B(arrow,width) -arrowshape $B(arrow,shape)
 
         .c bind $tagBox <Double-Button-1> [list DoForced row $whichSlice]
         .c bind $tagBox <Button-${S(button,right)}> [list ::Hint::Down row $whichSlice False]
@@ -196,7 +195,7 @@ proc DrawBoard {size} {
         .c create text $x1a $y0 -tag [list $tagBox $tagHintUnselected] -font $B(font,hints) -anchor ne
         .c create text $x $y1 -tag [list $tagBox $tagHintSelected] -font $B(font,hints) -anchor s
         .c create line $x 10000 $x $grid_y1 -tag [list $tagArrow arrow] -arrow last \
-            -fill $COLOR(bg) -width $B(arrow,width) -arrowshape $B(arrow,shape)
+            -fill $COLOR(target,highlight) -width $B(arrow,width) -arrowshape $B(arrow,shape)
 
         .c bind $tagBox <Double-Button-1> [list DoForced col $whichSlice]
         .c bind $tagBox <Button-${S(button,right)}> [list ::Hint::Down col $whichSlice False]
@@ -214,6 +213,7 @@ proc DrawBoard {size} {
     # tagSmall : small text in lower-right showing value of cell when killed
     # tagBlob : box for the blob
     # tagBlobText : text for the blob
+    # tagBlobArrow : highlight around blob total
 
     for {set row 0} {$row < $size} {incr row} {
         for {set col 0} {$col < $size} {incr col} {
@@ -225,6 +225,7 @@ proc DrawBoard {size} {
             set tagSmall small_${row}_$col
             set tagBlob blob_${row}_$col
             set tagBlobText btext_${row}_$col
+            set tagBlobArrow arrow_${row}_$col
 
             lassign [GridXY $row $col] x0 y0 x1 y1 x y
             lassign [GrowBox [list $x0 $y0 $x1 $y1] -5] xx0 yy0 xx1 yy1
@@ -245,15 +246,17 @@ proc DrawBoard {size} {
 
             .c create rect $x0 $y0 $blobX1 $blobY1 -tag [list blob blobBox $tagBlob] -outline ""
             .c create text $blobX $blobY -tag [list blob $tagBlobText] -font $B(font,blob)
+            set xy [GrowBox [.c coords $tagBlob] 4]
+            roundRect .c {*}$xy 5 -tag [list arrow $tagBlobArrow] -fill {} -width 5 \
+                -outline $COLOR(target,highlight)
+            .c move $tagBlobArrow 1 1
 
-            # .c bind $tagBox <ButtonRelease-1> [list ButtonAction "select" $row $col]
-            # .c bind $tagBox <ButtonRelease-${S(button,right)}> [list ButtonAction "kill" $row $col]
-            # .c bind $tagBox <ButtonRelease-${S(button,middle)}> [list ButtonAction "normal" $row $col]
             ::MCB::BindAsButton .c $tagBox 1 [list ButtonAction "select" $row $col]
             ::MCB::BindAsButton .c $tagBox $S(button,right) [list ButtonAction "kill" $row $col]
             ::MCB::BindAsButton .c $tagBox $S(button,middle) [list ButtonAction "normal" $row $col]
         }
     }
+    .c lower arrow
     .c move blob 1 1
 
     .c create text $B(center,grid) -tag tagVictory -font $B(font,victory) -fill black \
@@ -698,7 +701,7 @@ proc GridSumsXY {sliceType whichSlice} {
     set x1 [expr {$x0 + $B(cellSize)}]
     set y1 [expr {$y0 + $B(cellSize)}]
 
-    set padding 5 ;# KPV
+    set padding 5
     set x0 [expr {$x0 + $padding}]
     set y0 [expr {$y0 + $padding}]
     set x1 [expr {$x1 - $padding}]
@@ -1003,7 +1006,7 @@ proc HighlightHints {sliceType whichSlice needed excess} {
             CounterAnimation $tagHintUnselected $hintUnselected
         }
     }
-    .c itemconfig arrow -fill $::COLOR(bg)
+    .c lower arrow
 }
 proc CounterAnimation {tag last} {
     global AID

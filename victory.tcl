@@ -27,6 +27,7 @@ proc ::Victory::Victory {{type ?}} {
     variable config
 
     .c lower canvas_bg
+    .c lower arrow
     ::Cutthroat::Display True
     ::Victory::SetupColors $type
     set msg [::Victory::Message]
