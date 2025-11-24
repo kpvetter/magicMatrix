@@ -11,24 +11,11 @@ exit
 #
 # TODO:
 #  bug: undo clearing blob doesn't recolor correctly
-#  mode with punishes guesses -- bark if not forced
 #  check starting size w/ screensize
 #  show size/seed and create board with size/seed
-#  disable undo in cutthroat mode
-#  remove free play???
-#  remove undo button in cutthroat && disable ctrl-Z
 #  put target sum in bottom corner
 #
-#  auto solve
-#  animation
 #  dynamic resizing
-#  unscaled constant in GrowBox for circle
-#  unscaled constant for roundRect
-#  levels of hint: try row 3 then need 4,5, etc
-#  turn for into foreach
-#  select/kill only work on "normal" digits???
-#  if size > X, then insure one slice has only 1 selected digit
-#  newBoard and BRD use different format
 #  interface for reading puzzle from file
 #  interface for restarting
 
@@ -175,9 +162,10 @@ proc DrawBoard {size} {
         .c create line 0 $y $x0 $y -tag [list $tagArrow arrow] -arrow last \
             -fill $COLOR(target,highlight) -width $B(arrow,width) -arrowshape $B(arrow,shape)
 
-        .c bind $tagBox <Double-Button-1> [list DoForced row $whichSlice]
-        .c bind $tagBox <Button-${S(button,right)}> [list ::Hint::Down row $whichSlice False]
-        .c bind $tagBox <Button-${S(button,middle)}> [list ::Hint::Down row $whichSlice True]
+        .c bind $tagBox <Button-1> [list ::Hint::Down row $whichSlice EXCESS]
+        .c bind $tagBox <Button-${S(button,right)}> [list ::Hint::Down row $whichSlice HINTS]
+        .c bind $tagBox <Button-${S(button,middle)}> [list ::Hint::Down row $whichSlice HINTS+]
+        .c bind $tagBox <ButtonRelease-1> [list ::Hint::Up row $whichSlice]
         .c bind $tagBox <ButtonRelease-${S(button,middle)}> [list ::Hint::Up row $whichSlice]
         .c bind $tagBox <ButtonRelease-${S(button,right)}> [list ::Hint::Up row $whichSlice]
 
@@ -197,9 +185,10 @@ proc DrawBoard {size} {
         .c create line $x 10000 $x $grid_y1 -tag [list $tagArrow arrow] -arrow last \
             -fill $COLOR(target,highlight) -width $B(arrow,width) -arrowshape $B(arrow,shape)
 
-        .c bind $tagBox <Double-Button-1> [list DoForced col $whichSlice]
-        .c bind $tagBox <Button-${S(button,right)}> [list ::Hint::Down col $whichSlice False]
-        .c bind $tagBox <Button-${S(button,middle)}> [list ::Hint::Down col $whichSlice True]
+        .c bind $tagBox <Button-1> [list ::Hint::Down col $whichSlice EXCESS]
+        .c bind $tagBox <Button-${S(button,right)}> [list ::Hint::Down col $whichSlice HINTS]
+        .c bind $tagBox <Button-${S(button,middle)}> [list ::Hint::Down col $whichSlice HINTS+]
+        .c bind $tagBox <ButtonRelease-1> [list ::Hint::Up col $whichSlice]
         .c bind $tagBox <ButtonRelease-${S(button,middle)}> [list ::Hint::Up col $whichSlice]
         .c bind $tagBox <ButtonRelease-${S(button,right)}> [list ::Hint::Up col $whichSlice]
     }
@@ -581,6 +570,8 @@ proc ShowHealthState {} {
     set msg $::BAD_STATE
     if {! $::Settings::HINTS(health)} {
         set msg ""
+    } elseif {$::Settings::MODE(mode) ne "FREE_PLAY"} {
+        set msg ""
     } elseif {! $::BRD(solvable)} {
         set msg $::UNKNOWN_STATE
     } elseif {[::Hint::IsOk]} {
@@ -828,8 +819,10 @@ proc ColorizeBlobs {} {
         .c addtag $tagText withtag $tagBlobText
         .c addtag $tagBlobBox withtag $tagBlobText
 
-        .c bind $tagBlobBox <Button-${S(button,right)}> [list ::Hint::Down blob $id False]
-        .c bind $tagBlobBox <Button-${S(button,middle)}> [list ::Hint::Down blob $id True]
+        .c bind $tagBlobBox <Button-1> [list ::Hint::Down blob $id EXCESS]
+        .c bind $tagBlobBox <Button-${S(button,right)}> [list ::Hint::Down blob $id HINTS]
+        .c bind $tagBlobBox <Button-${S(button,middle)}> [list ::Hint::Down blob $id HINTS+]
+        .c bind $tagBlobBox <ButtonRelease-1> [list ::Hint::Up blob $id]
         .c bind $tagBlobBox <ButtonRelease-${S(button,middle)}> [list ::Hint::Up blob $id]
         .c bind $tagBlobBox <ButtonRelease-${S(button,right)}> [list ::Hint::Up blob $id]
 
@@ -1528,8 +1521,8 @@ proc ::Settings::Settings {} {
 
     ::ttk::button $WSIZE.all0 -text "All on" -command {::Settings::AllOnOff sizes 1}
     ::ttk::button $WSIZE.all1 -text "All off" -command {::Settings::AllOnOff sizes 0}
-    ::ttk::button $WSIZE.blobon -text "All 3D on" -command {::Settings::AllOnOff sizes 3Don}
-    ::ttk::button $WSIZE.bloboff -text "All 3D off" -command {::Settings::AllOnOff sizes 3Doff}
+    ::ttk::button $WSIZE.blobon -text "3D on" -command {::Settings::AllOnOff sizes 3Don}
+    ::ttk::button $WSIZE.bloboff -text "3D off" -command {::Settings::AllOnOff sizes 3Doff}
     ::ttk::button $WSIZE.go -text "New Board" -command StartGame
     grid $WSIZE.all0 $WSIZE.blobon -pady {.2i 0}
     grid $WSIZE.all1 $WSIZE.bloboff -pady {0 .2i}

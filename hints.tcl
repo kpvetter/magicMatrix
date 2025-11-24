@@ -15,20 +15,22 @@ namespace eval ::Hint {
     variable poppedUpItem {}
     variable pausing 0
     variable MAX_LINES 7
+
+    # actions: HINTS HINTS+ EXCESS
 }
 
-proc ::Hint::Down {sliceType whichSlice verbose} {
+proc ::Hint::Down {sliceType whichSlice action} {
     focus -force .
     if {! $::BRD(active)} return
     if {! $::Settings::HINTS(sets)} return
-    if {$verbose && ! $::Settings::HINTS(solve)} return
+    if {$action eq "HINTS+" && ! $::Settings::HINTS(solve)} return
 
-    ::Hint::Popup $sliceType $whichSlice $verbose
+    ::Hint::Popup $sliceType $whichSlice $action
 }
 proc ::Hint::Up {sliceType whichSlice} {
     .c delete hintPopup
 }
-proc ::Hint::Popup {sliceType whichSlice verbose} {
+proc ::Hint::Popup {sliceType whichSlice action} {
     variable poppedUpItem
     variable MAX_LINES
     global BRD
@@ -51,7 +53,7 @@ proc ::Hint::Popup {sliceType whichSlice verbose} {
     }
 
     .c delete hintPopup
-    set text [::Hint::PrettyText $sliceType $whichSlice $MAX_LINES $verbose]
+    set text [::Hint::PrettyText $sliceType $whichSlice $MAX_LINES $action]
     .c create text $x $y -tag {hintPopup hintText} -anchor $anchor -text $text -justify c \
         -font $::B(font,hintBox)
     set xy [GrowBox [.c bbox hintText] 5]
@@ -110,16 +112,24 @@ proc ::Hint::Cheat {} {
     .c raise $tagArrow
     ::Hint::_Doit $sliceType $whichSlice
 }
-proc ::Hint::PrettyText {sliceType whichSlice maxLines verbose} {
+proc ::Hint::PrettyText {sliceType whichSlice maxLines action} {
     global BRD
-    set size $BRD(size)
+
+    if {$action eq "EXCESS"} {
+        lassign $BRD($sliceType,$whichSlice,meta) target selectedTotal needed unSelectedTotal
+        set excess [expr {$unSelectedTotal - $needed}]
+        set line "Excess: $excess"
+        return $line
+    }
+
+
     set sets $BRD($sliceType,$whichSlice,sets)
     set unselected "\u2717"
 
-    set excess [expr {[llength $sets] - $maxLines}]
-    if {$excess == 1} {
-        set excess 0
-    } elseif {$excess > 0} {
+    set overflowLines [expr {[llength $sets] - $maxLines}]
+    if {$overflowLines == 1} {
+        set overflowLines 0
+    } elseif {$overflowLines > 0} {
         set sets [lrange $sets 0 $maxLines-1]
     }
 
@@ -147,8 +157,8 @@ proc ::Hint::PrettyText {sliceType whichSlice maxLines verbose} {
         }
         lappend lines [join $line " "]
     }
-    if {$excess > 0} { lappend lines "($excess more)" }
-    if {$verbose} {
+    if {$overflowLines > 0} { lappend lines "($overflowLines more)" }
+    if {$action eq "HINTS+"} {
         set bar [HorizontalBar $::B(font,hintBox) [lindex $lines 0]]
         lappend lines $bar
         lappend lines [join $BRD($sliceType,$whichSlice,hint) " "]
